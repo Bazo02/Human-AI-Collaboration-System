@@ -1,0 +1,59 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loan Decision Study</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+    <div class="container">
+        <h1>Decision-Making Study</h1>
+
+        <p>
+            In this study, you will evaluate a series of loan applications.
+            For each application, your task is to decide whether the loan should be
+            <strong>Approved</strong> or <strong>Rejected</strong>.
+        </p>
+
+        <p>
+            The study has two parts:
+            first you will complete <strong>20 decisions without AI support</strong>,
+            then you will complete <strong>20 decisions with AI support</strong>.
+        </p>
+
+        <hr />
+
+        <form action="/start" method="post">
+            <div class="survey-question">
+                <label for="participant_id">Participant ID</label>
+                <input
+                    type="text"
+                    id="participant_id"
+                    name="participant_id"
+                    placeholder="Enter your ID (or leave blank)"
+                    style="padding: 8px; width: 250px;"
+                />
+            </div>
+
+            <div class="button-group">
+                <button type="submit" class="btn-secondary">
+                    Start Study
+                </button>
+            </div>
+        </form>
+
+        <p class="small-text">
+            By continuing, you confirm that you understand the task and agree to participate in this study.
+        </p>
+
+        <hr />
+
+        <p class="small-text">
+          <strong>Admin only:</strong> view results and manage logs here:
+          <a href="/admin">Admin login</a>
+        </p>
+    </div>
+</body>
+</html>

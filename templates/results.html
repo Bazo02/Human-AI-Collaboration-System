@@ -1,0 +1,86 @@
+<!-- templates/results.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Results</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<div class="container">
+  <div style="display:flex; justify-content: space-between; align-items:center;">
+    <h1>Study Results</h1>
+    <div>
+      <a href="/admin/dashboard" class="small-text" style="margin-right:12px;">Admin Dashboard</a>
+      <a href="/admin/logout" class="small-text">Logout</a>
+    </div>
+  </div>
+
+  <p class="small-text">
+    <strong>Admin only:</strong> results are only visible after logging in.
+  </p>
+
+  <hr />
+
+  {% if not results.has_data %}
+    <p>{{ results.message }}</p>
+  {% else %}
+    <p class="small-text">
+      Decisions logged: {{ results.summary.n_decisions }} |
+      Surveys logged: {{ results.summary.n_surveys }}
+    </p>
+
+    <h2>Summary</h2>
+    <pre style="background:#fafafa; padding:12px; border:1px solid #eee; border-radius:6px; overflow:auto;">{{ results.summary | tojson(indent=2) }}</pre>
+    
+<h2>Participant Comments</h2>
+
+{% if results.summary.comments and results.summary.comments|length > 0 %}
+  <div class="case-box">
+    {% for item in results.summary.comments %}
+      <div class="case-item">
+        <div>
+          <span class="case-label">Participant:</span> {{ item.participant_id }}
+          <span class="small-text">({{ item.condition }})</span>
+        </div>
+        <div class="case-value" style="margin-top:6px;">
+          {{ item.comment }}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="small-text">No written comments submitted yet.</p>
+{% endif %}
+
+    <h2>Plots</h2>
+
+    {% if results.plots.accuracy %}
+      <h3>Accuracy</h3>
+      <img src="{{ results.plots.accuracy }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
+    {% endif %}
+
+    {% if results.plots.time %}
+      <h3>Decision Time</h3>
+      <img src="{{ results.plots.time }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
+    {% endif %}
+
+    {% if results.plots.trust %}
+      <h3>Trust</h3>
+      <img src="{{ results.plots.trust }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
+    {% endif %}
+
+    {% if results.plots.sus %}
+      <h3>SUS</h3>
+      <img src="{{ results.plots.sus }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
+    {% endif %}
+
+    {% if results.plots.ai_followed %}
+      <h3>AI Followed Rate</h3>
+      <img src="{{ results.plots.ai_followed }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
+    {% endif %}
+  {% endif %}
+</div>
+</body>
+</html>

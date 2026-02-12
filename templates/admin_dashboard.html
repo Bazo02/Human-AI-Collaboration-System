@@ -1,0 +1,118 @@
+<!-- templates/admin_dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="container">
+
+    <div style="display:flex; justify-content: space-between; align-items:center;">
+      <h1>Admin Dashboard</h1>
+      <a href="/admin/logout" class="small-text">Logout</a>
+    </div>
+
+    <p class="small-text">
+      <strong>Admin only:</strong> this page is for managing study data and viewing results.
+    </p>
+
+    <hr />
+
+    <h2>Quick Links</h2>
+    <div class="button-group">
+      <a href="/admin/results" class="btn-secondary">View Results</a>
+    </div>
+
+    <hr />
+
+    <h2>Database Status</h2>
+    <p class="small-text">
+      Row counts are retrieved from the SQLite database (<code>outputs/study.db</code>).
+    </p>
+
+    <div class="case-box">
+      <div class="case-item">
+        <span class="case-label">Decisions rows:</span>
+        <span class="case-value">{{ counts.decisions }}</span>
+      </div>
+      <div class="case-item">
+        <span class="case-label">Events rows:</span>
+        <span class="case-value">{{ counts.events }}</span>
+      </div>
+      <div class="case-item">
+        <span class="case-label">Surveys rows:</span>
+        <span class="case-value">{{ counts.surveys }}</span>
+      </div>
+    </div>
+
+    <div class="case-box" style="margin-top:12px;">
+      <div class="case-item">
+        <div class="case-label">What each log contains</div>
+        <div class="small-text" style="margin-top:6px;">
+          <strong>Decisions:</strong> one row per case decision (choice, correct/incorrect, time, AI seen/followed).<br/>
+          <strong>Events:</strong> interaction events (clicks, openings, page actions) with optional JSON payload.<br/>
+          <strong>Surveys:</strong> post-task questionnaire answers stored as JSON (one row per participant).
+        </div>
+      </div>
+    </div>
+
+    <hr />
+
+    <h2>Delete Participant Data</h2>
+    <p class="small-text">
+      Deletes one participant’s rows from <code>decisions</code>, <code>events</code>, and <code>surveys</code>.
+    </p>
+
+    <div class="case-box">
+      {% if participants and participants|length > 0 %}
+        {% for pid in participants %}
+          <div class="case-item" style="display:flex; justify-content: space-between; align-items:center;">
+            <div>
+              <span class="case-label">Participant:</span> {{ pid }}
+            </div>
+
+            <form action="/admin/delete_participant" method="post" style="margin:0;">
+              <input type="hidden" name="participant_id" value="{{ pid }}">
+              <button type="submit" class="icon-btn" title="Delete this participant">✕</button>
+            </form>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="small-text">No participants found yet.</div>
+      {% endif %}
+    </div>
+
+    <hr />
+
+    <h2>Clear Database Tables</h2>
+    <p class="small-text">
+      Deletes all rows from the selected table (the database file stays).
+    </p>
+
+    <div class="case-box">
+      <!-- IMPORTANT: these match the Flask routes in main.py -->
+      <form action="/admin/clear/decisions" method="post" style="margin-bottom:10px;">
+        <button type="submit" class="btn-reject">Clear decisions table</button>
+      </form>
+
+      <form action="/admin/clear/events" method="post" style="margin-bottom:10px;">
+        <button type="submit" class="btn-reject">Clear events table</button>
+      </form>
+
+      <form action="/admin/clear/surveys" method="post" style="margin-bottom:10px;">
+        <button type="submit" class="btn-reject">Clear surveys table</button>
+      </form>
+
+      <hr />
+
+      <form action="/admin/clear_all" method="post">
+        <button type="submit" class="btn-reject">Clear ALL study data</button>
+      </form>
+    </div>
+
+  </div>
+</body>
+</html>
