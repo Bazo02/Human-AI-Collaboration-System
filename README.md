@@ -4,7 +4,7 @@
 
 This project implements a controlled experimental platform for evaluating Human–AI collaboration in loan decision making.
 
-Participants complete 40 loan decisions in a within-subject design:
+Participants complete 24 loan decisions.
 
 * **20 decisions without AI support**
 * **20 decisions with AI support** (recommendation + confidence + explanation)
@@ -55,7 +55,7 @@ pip install -r requirements.txt
 
 ---
 
-## Running
+## Running from main branch
 
 Prepare data and train model:
 
@@ -83,6 +83,35 @@ http://127.0.0.1:5000/admin
 ```
 
 ---
+
+
+## Run localy from deploy branch (meant for renderer) 
+
+From the project root directory:
+
+```bash
+python -m venv venv
+venv\Scripts\activate   # Windows
+# source venv/bin/activate  # Mac/Linux
+
+pip install -r requirements.txt
+
+python -m app.data_prep
+python -m app.model_train
+python -m app.main
+```
+
+Then open:
+
+```
+http://127.0.0.1:5000
+```
+
+**Important:** Run the commands from the project root folder, not inside `/app`.
+
+```
+
+```
 
 ## Data
 

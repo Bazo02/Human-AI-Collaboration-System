@@ -1,5 +1,5 @@
 // static/app.js
-// Follow backend-provided `next` URLs (task / transition / survey)
+
 
 let startTime = null;
 let aiSeen = false;

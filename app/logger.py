@@ -1,5 +1,5 @@
 # app/logger.py
-# Logging to SQLite instead of CSV
+# Logs study data to SQLite.
 
 from __future__ import annotations
 
@@ -9,15 +9,24 @@ from typing import Any, Dict, Optional
 
 from app.db import get_conn, init_db
 
+
 def _now_utc_iso() -> str:
+    # Returns current UTC time in ISO format
     return datetime.now(timezone.utc).isoformat()
 
 
-# Initialize database tables on import (simple for thesis prototype)
+# Initializes database tables when the module is imported
 init_db()
 
 
-def log_event(participant_id: str, condition: str, case_id: Optional[Any], event: str, payload: Dict[str, Any]):
+def log_event(
+    participant_id: str,
+    condition: str,
+    case_id: Optional[Any],
+    event: str,
+    payload: Dict[str, Any],
+):
+    # Inserts one row into the events table
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -50,6 +59,7 @@ def log_decision(
     ai_seen: Optional[int],
     explanation_opened: Optional[int],
 ):
+    # Inserts one row into the decisions table
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -80,6 +90,7 @@ def log_decision(
 
 
 def log_survey(participant_id: str, condition: str, answers: Dict[str, Any]):
+    # Inserts one row into the surveys table
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(

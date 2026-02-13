@@ -1,7 +1,6 @@
 # app/main.py
-# UPDATED (within-subjects design):
-# - Every participant completes 20 cases WITHOUT AI, then 20 cases WITH AI
-# - Decision rows are logged with condition=baseline or condition=ai
+# Runs the Flask app for the within-subjects study.
+# Each participant completes 20 baseline cases, then 20 AI cases.
 
 from __future__ import annotations
 
@@ -53,6 +52,7 @@ FIELD_DESCRIPTIONS: Dict[str, str] = {
 
 
 def _load_cases() -> pd.DataFrame:
+    # Loads dataset and ensures required columns exist
     if os.path.exists(CASES_FOR_STUDY_PATH):
         df = pd.read_csv(CASES_FOR_STUDY_PATH)
     else:
@@ -72,9 +72,7 @@ CASES_DF = _load_cases()
 
 
 def _pick_cases_for_participant() -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Sample 40 cases once. First 20 = baseline, next 20 = ai.
-    """
+    # Samples total cases and splits into baseline and AI blocks
     seed = session.get("seed")
     if seed is None:
         seed = int(time.time())
@@ -82,7 +80,6 @@ def _pick_cases_for_participant() -> Dict[str, List[Dict[str, Any]]]:
 
     n_needed = TOTAL_CASES_PER_PARTICIPANT
     if len(CASES_DF) < n_needed:
-        # (Shouldn't happen if you have 100+, but keeps it robust)
         df_sample = CASES_DF.sample(n=n_needed, random_state=seed, replace=True).reset_index(drop=True)
     else:
         df_sample = CASES_DF.sample(n=n_needed, random_state=seed).reset_index(drop=True)
@@ -96,6 +93,7 @@ def _pick_cases_for_participant() -> Dict[str, List[Dict[str, Any]]]:
 
 
 def _ui_case_view(case_row: Dict[str, Any]) -> Dict[str, Any]:
+    # Removes target and hidden fields before sending to UI
     view = dict(case_row)
     view.pop(TARGET_COL, None)
     view.pop("case_id", None)
@@ -105,6 +103,7 @@ def _ui_case_view(case_row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _features_for_model(case_row: Dict[str, Any]) -> Dict[str, Any]:
+    # Returns only model features
     feats = dict(case_row)
     feats.pop(TARGET_COL, None)
     feats.pop("case_id", None)
@@ -112,6 +111,7 @@ def _features_for_model(case_row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _require_admin():
+    # Redirects to login if user is not admin
     if not session.get("is_admin"):
         return redirect(url_for("admin_login"))
     return None
@@ -124,13 +124,14 @@ def index():
 
 @app.route("/start", methods=["POST"])
 def start():
+    # Starts new participant session
     participant_id = request.form.get("participant_id", "").strip()
     if not participant_id:
         participant_id = f"p_{uuid.uuid4().hex[:8]}"
 
     session.clear()
     session["participant_id"] = participant_id
-    session["block"] = "baseline"   # always start baseline
+    session["block"] = "baseline"
     session["case_index"] = 0
     session["cases_by_block"] = _pick_cases_for_participant()
     session["started_at"] = time.time()
@@ -141,11 +142,11 @@ def start():
 
 @app.route("/transition", methods=["GET"])
 def transition():
+    # Shows transition page before AI block
     participant_id = session.get("participant_id")
     if not participant_id:
         return redirect(url_for("index"))
 
-    # Only show transition if we are now in AI block
     if session.get("block") != "ai":
         return redirect(url_for("task"))
 
@@ -154,6 +155,7 @@ def transition():
 
 @app.route("/task", methods=["GET"])
 def task():
+    # Displays one case
     participant_id = session.get("participant_id")
     block = session.get("block", "baseline")
     cases_by_block = session.get("cases_by_block", {})
@@ -163,7 +165,6 @@ def task():
     if not participant_id or not cases:
         return redirect(url_for("index"))
 
-    # Finished current block?
     if idx >= len(cases):
         if block == "baseline":
             session["block"] = "ai"
@@ -194,13 +195,14 @@ def task():
         case=case_for_ui,
         ai=ai_payload,
         case_number=idx + 1,
-        total_cases=len(cases),  # 20
+        total_cases=len(cases),
         field_descriptions=FIELD_DESCRIPTIONS,
     )
 
 
 @app.route("/submit_decision", methods=["POST"])
 def submit_decision():
+    # Stores participant decision
     participant_id = session.get("participant_id")
     block = session.get("block", "baseline")
     cases_by_block = session.get("cases_by_block", {})
@@ -243,7 +245,6 @@ def submit_decision():
 
     session["case_index"] = idx + 1
 
-    # Finished this block?
     if session["case_index"] >= len(cases):
         if block == "baseline":
             session["block"] = "ai"
@@ -259,6 +260,7 @@ def submit_decision():
 
 @app.route("/survey", methods=["GET", "POST"])
 def survey():
+    # Displays and stores final survey
     participant_id = session.get("participant_id")
     if not participant_id:
         return redirect(url_for("index"))
@@ -266,7 +268,6 @@ def survey():
     if request.method == "GET":
         return render_template("survey.html")
 
-    # Store final survey as "ai" (trust questions refer to AI)
     log_survey(participant_id=participant_id, condition="ai", answers=dict(request.form.items()))
     log_event(participant_id, "ai", case_id=None, event="survey_submitted", payload={})
     return redirect(url_for("done"))
@@ -276,8 +277,6 @@ def survey():
 def done():
     return render_template("done.html")
 
-
-# ---------------- Admin ----------------
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
@@ -361,4 +360,3 @@ def admin_delete_participant_route():
 
 if __name__ == "__main__":
     app.run(debug=True)
-

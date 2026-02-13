@@ -1,6 +1,5 @@
 # app/db.py
-# Simple SQLite database helper for my thesis prototype.
-# Keeps logs saved in a single local file: outputs/study.db
+# Handles SQLite database setup and simple admin operations for the thesis prototype.
 
 from __future__ import annotations
 
@@ -12,15 +11,14 @@ from app.config import SQLITE_DB_PATH
 
 
 def _ensure_parent_dir(path: str) -> None:
+    # Creates the parent folder if it does not exist
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
 
 
 def get_conn() -> sqlite3.Connection:
-    """
-    Returns a connection. SQLite file will be created automatically if missing.
-    """
+    # Returns a SQLite connection and creates the DB file if missing
     _ensure_parent_dir(SQLITE_DB_PATH)
     conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -28,13 +26,11 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """
-    Create tables if they do not exist.
-    """
+    # Creates tables if they do not already exist
     conn = get_conn()
     cur = conn.cursor()
 
-    # Events table
+    # Creates events table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +43,7 @@ def init_db() -> None:
     )
     """)
 
-    # Decisions table
+    # Creates decisions table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS decisions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +61,7 @@ def init_db() -> None:
     )
     """)
 
-    # Surveys table
+    # Creates surveys table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS surveys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,9 +75,12 @@ def init_db() -> None:
     conn.commit()
     conn.close()
 
-# ---- Admin-friendly DB functions ----
+
+# Admin DB functions
+
 
 def db_count_rows(table: str) -> int:
+    # Returns number of rows in a table
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"SELECT COUNT(*) FROM {table}")
@@ -91,14 +90,11 @@ def db_count_rows(table: str) -> int:
 
 
 def db_list_participants() -> list[str]:
-    """
-    Returns a sorted unique list of participant IDs found in the DB.
-    Excludes 'ADMIN'.
-    """
+    # Returns sorted unique participant IDs from all tables (excluding ADMIN)
     conn = get_conn()
     cur = conn.cursor()
 
-    # Collect from all tables and union them
+    # Collects participant IDs from all tables
     cur.execute("""
         SELECT DISTINCT participant_id FROM decisions
         UNION
@@ -114,10 +110,7 @@ def db_list_participants() -> list[str]:
 
 
 def db_delete_participant(participant_id: str) -> dict:
-    """
-    Deletes one participant from all tables.
-    Returns how many rows were deleted from each table.
-    """
+    # Deletes one participant from all tables and returns deleted row counts
     conn = get_conn()
     cur = conn.cursor()
 
@@ -143,9 +136,7 @@ def db_delete_participant(participant_id: str) -> dict:
 
 
 def db_clear_table(table: str) -> int:
-    """
-    Deletes all rows in one table. Returns number of deleted rows.
-    """
+    # Deletes all rows in one table and returns number of deleted rows
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"SELECT COUNT(*) FROM {table}")
@@ -157,9 +148,7 @@ def db_clear_table(table: str) -> int:
 
 
 def db_clear_all() -> dict:
-    """
-    Clears all study tables. Returns deleted row counts.
-    """
+    # Clears all study tables and returns deleted row counts
     return {
         "events": db_clear_table("events"),
         "decisions": db_clear_table("decisions"),

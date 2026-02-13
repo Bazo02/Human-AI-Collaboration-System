@@ -1,47 +1,34 @@
 /* static/styles.css */
-/*
-  More modern, polished styling.
-  - Neutral “glass” surface + subtle depth
-  - Better color system (HSL), softer shadows
-  - Improved focus states + hover/active behavior
-  - Keeps your existing class names so you can drop this in
-*/
 
 :root {
-  /* Use HSL so tweaking the palette is easy */
-  --bg: hsl(222 35% 97%);          /* page background */
-  --surface: hsl(0 0% 100%);       /* cards */
-  --surface-2: hsl(220 25% 98%);   /* subtle alt surface */
+  --bg: hsl(222 35% 97%);
+  --surface: hsl(0 0% 100%);
+  --surface-2: hsl(220 25% 98%);
   --text: hsl(222 35% 12%);
   --muted: hsl(220 10% 42%);
   --border: hsl(220 16% 90%);
 
-  /* Accent (indigo/blue) */
   --primary: hsl(230 90% 60%);
-  --primary-2: hsl(200 90% 56%);   /* secondary accent for gradients */
+  --primary-2: hsl(200 90% 56%);
   --primary-hover: hsl(230 90% 54%);
 
-  /* Semantic colors */
   --success: hsl(152 62% 38%);
   --success-hover: hsl(152 62% 33%);
   --danger: hsl(0 76% 54%);
   --danger-hover: hsl(0 76% 48%);
 
-  /* Depth + shape */
   --radius: 16px;
   --radius-sm: 12px;
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 18px rgba(15, 23, 42, 0.06);
   --shadow: 0 2px 6px rgba(15, 23, 42, 0.06), 0 18px 45px rgba(15, 23, 42, 0.10);
 
-  /* Focus ring */
   --ring: 0 0 0 4px hsl(230 90% 60% / 0.18);
 
-  /* Motion */
   --ease: cubic-bezier(.2,.8,.2,1);
 }
 
+/* Base */
 * { box-sizing: border-box; }
-
 html, body { height: 100%; }
 
 body {
@@ -50,8 +37,6 @@ body {
   margin: 0;
   color: var(--text);
   line-height: 1.55;
-
-  /* More “premium” background */
   background:
     radial-gradient(900px 520px at 12% -10%, hsl(230 90% 65% / 0.16) 0%, transparent 60%),
     radial-gradient(760px 460px at 100% 10%, hsl(200 90% 55% / 0.12) 0%, transparent 55%),
@@ -66,10 +51,13 @@ a {
 }
 a:hover { text-decoration: underline; }
 
-/* -----------------------
-   Typography
------------------------ */
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
 
+/* Typography */
 h1, h2, h3 {
   margin: 0 0 12px 0;
   letter-spacing: -0.025em;
@@ -95,25 +83,13 @@ h3 {
 
 p { margin: 0 0 14px 0; color: var(--text); }
 
-hr {
-  border: 0;
-  border-top: 1px solid var(--border);
-  margin: 18px 0;
-}
-
-/* -----------------------
-   Layout container
------------------------ */
-
+/* Container */
 .container {
   max-width: 980px;
   margin: 44px auto;
   padding: 28px;
-
-  /* “Glass” feel without going full transparency */
   background: linear-gradient(180deg, hsl(0 0% 100% / 0.88), hsl(0 0% 100% / 0.82));
   backdrop-filter: blur(8px);
-
   border: 1px solid hsl(220 16% 90% / 0.75);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -124,10 +100,7 @@ hr {
   h1 { font-size: 26px; }
 }
 
-/* -----------------------
-   Generic cards / boxes
------------------------ */
-
+/* Cards / panels */
 .case-box,
 .ai-panel {
   border-radius: var(--radius-sm);
@@ -155,10 +128,7 @@ hr {
   margin-top: 10px;
 }
 
-/* -----------------------
-   Case information layout
------------------------ */
-
+/* Case layout */
 .case-item {
   display: grid;
   grid-template-columns: 240px 1fr;
@@ -189,14 +159,10 @@ hr {
   margin-top: 3px;
 }
 
-/* -----------------------
-   AI panel (more premium)
------------------------ */
-
+/* AI panel */
 .ai-panel {
   position: relative;
   overflow: hidden;
-
   border: 1px solid hsl(230 90% 60% / 0.22);
   background:
     radial-gradient(500px 220px at 15% 10%, hsl(230 90% 60% / 0.16) 0%, transparent 60%),
@@ -256,10 +222,7 @@ hr {
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
 }
 
-/* -----------------------
-   Buttons + inputs
------------------------ */
-
+/* Buttons */
 .button-group {
   display: flex;
   flex-wrap: wrap;
@@ -275,23 +238,19 @@ button,
   border: 1px solid transparent;
   border-radius: 14px;
   padding: 12px 16px;
-
   font-size: 14.5px;
   font-weight: 800;
   cursor: pointer;
   text-decoration: none;
-
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 140px;
-
   transition: transform 0.08s var(--ease),
               box-shadow 0.20s var(--ease),
               background-color 0.15s var(--ease),
               border-color 0.15s var(--ease),
               filter 0.15s var(--ease);
-
   box-shadow: var(--shadow-sm);
 }
 
@@ -317,22 +276,13 @@ button:disabled {
   box-shadow: none;
 }
 
-/* Primary button (your .btn-secondary is actually primary) */
 .btn-secondary {
   color: white;
-  background:
-    linear-gradient(180deg, hsl(230 90% 62%), hsl(230 90% 54%));
+  background: linear-gradient(180deg, hsl(230 90% 62%), hsl(230 90% 54%));
 }
-.btn-secondary:hover {
-  filter: brightness(1.02);
-  text-decoration: none;
-}
-.btn-secondary:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-sm), var(--ring);
-}
+.btn-secondary:hover { filter: brightness(1.02); text-decoration: none; }
+.btn-secondary:focus-visible { outline: none; box-shadow: var(--shadow-sm), var(--ring); }
 
-/* Approve */
 .btn-approve {
   color: white;
   background: linear-gradient(180deg, hsl(152 62% 42%), hsl(152 62% 35%));
@@ -340,7 +290,6 @@ button:disabled {
 .btn-approve:hover { filter: brightness(1.02); text-decoration: none; }
 .btn-approve:focus-visible { outline: none; box-shadow: var(--shadow-sm), 0 0 0 4px hsl(152 62% 38% / 0.18); }
 
-/* Reject */
 .btn-reject {
   color: white;
   background: linear-gradient(180deg, hsl(0 76% 56%), hsl(0 76% 48%));
@@ -356,14 +305,11 @@ textarea {
   width: 100%;
   max-width: 460px;
   padding: 11px 12px;
-
   border-radius: 14px;
   border: 1px solid var(--border);
   background: hsl(0 0% 100% / 0.9);
-
   font-size: 14px;
   outline: none;
-
   transition: border-color 0.15s var(--ease),
               box-shadow 0.15s var(--ease),
               background-color 0.15s var(--ease);
@@ -390,10 +336,7 @@ input[type="checkbox"] {
   transform: translateY(1px);
 }
 
-/* -----------------------
-   Progress indicator
------------------------ */
-
+/* Progress */
 .progress-text {
   font-size: 13px;
   color: var(--muted);
@@ -414,10 +357,7 @@ input[type="checkbox"] {
   background: linear-gradient(90deg, var(--primary), var(--primary-2));
 }
 
-/* -----------------------
-   Survey styling
------------------------ */
-
+/* Survey */
 .survey-question {
   padding: 14px;
   border: 1px solid var(--border);
@@ -446,10 +386,7 @@ input[type="checkbox"] {
   color: hsl(222 35% 16%);
 }
 
-/* -----------------------
-   Tables / admin lists
------------------------ */
-
+/* Tables */
 table {
   width: 100%;
   border-collapse: separate;
@@ -487,7 +424,6 @@ th {
   background: hsl(0 0% 100% / 0.85);
 }
 
-/* Admin delete "X" button */
 .icon-btn {
   border: 1px solid var(--border);
   background: hsl(0 0% 100% / 0.9);
@@ -503,26 +439,20 @@ th {
   border-color: hsl(0 40% 86%);
 }
 
-/* -----------------------
-   Images
------------------------ */
-
+/* Images */
 img {
   max-width: 100%;
   height: auto;
   border-radius: 14px;
 }
 
-/* -----------------------
-   Utility
------------------------ */
-
+/* Utility */
 .text-muted { color: var(--muted); }
 .mt-0 { margin-top: 0; }
 .mt-10 { margin-top: 10px; }
 .mt-20 { margin-top: 20px; }
 
-/* Accessibility: reduce motion */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
 }

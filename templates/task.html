@@ -1,13 +1,5 @@
 <!-- templates/task.html -->
-<!--
-  Main task page (loan application review).
 
-  Updates for usability:
-  - Add units (years, per year)
-  - Format money fields as currency
-  - Keep explanations neutral (no hard thresholds like "bad credit score < 600")
-  - Hide internal case_id from the visible info (still sent as hidden input)
--->
 
 <!DOCTYPE html>
 <html lang="en">
@@ -27,12 +19,10 @@
         Case {{ case_number }} of {{ total_cases }}
     </div>
 
-    <!-- Hidden case ID for JS submission (not shown to participant) -->
+ 
     <input type="hidden" id="case-id" value="{{ case_id }}">
 
-    <!-- -----------------------
-         Case Information
-    ------------------------ -->
+  
 
     <div class="case-box">
         <h2>Applicant Information</h2>
@@ -62,9 +52,7 @@
         {% endfor %}
     </div>
 
-    <!-- -----------------------
-         AI Panel (only if AI condition)
-    ------------------------ -->
+  
 
     {% if condition == "ai" and ai %}
     <div class="ai-panel" id="ai-panel">
@@ -104,9 +92,7 @@
     </div>
     {% endif %}
 
-    <!-- -----------------------
-         Decision Buttons
-    ------------------------ -->
+    
 
     <div class="button-group">
         <button id="approve-btn" class="btn-approve">

@@ -1,9 +1,5 @@
 # app/analysis.py
-# Reads study data from SQLite and generates summary + plots for the admin results page.
-# Update:
-# - Uses non-GUI matplotlib backend (Agg) for Flask safety
-# - Parses free-text participant comments from surveys.answers_json
-# - Returns comments so they can be shown on the results page
+# Reads study data from SQLite and creates summary + plots for the admin results page.
 
 from __future__ import annotations
 
@@ -11,7 +7,6 @@ import os
 import json
 from typing import Dict, Any, List, Optional, Tuple
 
-# IMPORTANT: Force a non-GUI backend BEFORE importing pyplot.
 import matplotlib
 matplotlib.use("Agg")
 
@@ -21,14 +16,15 @@ import pandas as pd
 from app.db import get_conn
 
 
-RESULTS_DIRNAME = "results"  # folder under /static
+RESULTS_DIRNAME = "results"
 
 
-# ----------------------------
-# Helpers for survey scoring
-# ----------------------------
+
+# Survey scoring helpers:
+
 
 def _to_int(x) -> Optional[int]:
+    # Tries to convert a value to int and returns None on failure
     try:
         return int(x)
     except Exception:
@@ -36,12 +32,7 @@ def _to_int(x) -> Optional[int]:
 
 
 def _compute_sus_from_answers(answers: Dict[str, Any]) -> Optional[float]:
-    """
-    SUS scoring:
-      odd items: (score - 1)
-      even items: (5 - score)
-      sum * 2.5 => 0..100
-    """
+    # Computes SUS (0..100) from sus_q1..sus_q10
     scores: List[int] = []
     for i in range(1, 11):
         key = f"sus_q{i}"
@@ -56,9 +47,7 @@ def _compute_sus_from_answers(answers: Dict[str, Any]) -> Optional[float]:
 
 
 def _compute_trust_from_answers(answers: Dict[str, Any]) -> Optional[float]:
-    """
-    Simple trust score: average of trust_q1..trust_q3 (1..5)
-    """
+    # Computes trust score as the average of trust_q1..trust_q3 (1..5)
     vals = []
     for k in ["trust_q1", "trust_q2", "trust_q3"]:
         v = _to_int(answers.get(k))
@@ -69,10 +58,7 @@ def _compute_trust_from_answers(answers: Dict[str, Any]) -> Optional[float]:
 
 
 def _extract_comment(answers: Dict[str, Any]) -> str:
-    """
-    Try to find the participant's written feedback (textarea).
-    This is robust in case the textarea "name" changes.
-    """
+    # Extracts a free-text comment from the survey answers
     candidate_keys = [
         "comment", "comments", "feedback", "message",
         "free_text", "additional_feedback", "open_feedback",
@@ -85,7 +71,7 @@ def _extract_comment(answers: Dict[str, Any]) -> str:
             if txt:
                 return txt
 
-    # Fallback: pick any non-empty non-numeric string that isn't SUS/trust
+    # Falls back to any non-empty, non-numeric string that is not SUS/trust
     for k, v in answers.items():
         if v is None:
             continue
@@ -97,7 +83,6 @@ def _extract_comment(answers: Dict[str, Any]) -> str:
         lowk = str(k).lower()
         if lowk.startswith(("sus_", "trust_")):
             continue
-        # Avoid storing things like "baseline"/"ai" if that ended up in the form
         if txt.lower() in ("baseline", "ai"):
             continue
         return txt
@@ -105,26 +90,23 @@ def _extract_comment(answers: Dict[str, Any]) -> str:
     return ""
 
 
-# ----------------------------
-# DB read helpers
-# ----------------------------
+
+# Database helpers
+
 
 def _read_table_as_df(table: str) -> pd.DataFrame:
+    # Reads a table from SQLite into a DataFrame and returns an empty DF if missing
     conn = get_conn()
     try:
         return pd.read_sql_query(f"SELECT * FROM {table}", conn)
     except Exception:
-        # Table may not exist yet on fresh deploy
         return pd.DataFrame()
     finally:
         conn.close()
 
 
 def _parse_surveys_df(raw_surveys: pd.DataFrame) -> pd.DataFrame:
-    """
-    surveys table has answers_json; parse and compute:
-      sus_score, trust_score, comment
-    """
+    # Parses surveys.answers_json and computes sus_score, trust_score and comment
     if raw_surveys.empty:
         return raw_surveys
 
@@ -149,9 +131,9 @@ def _parse_surveys_df(raw_surveys: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# ----------------------------
+
 # Plot helper
-# ----------------------------
+
 
 def _make_bar_plot(
     labels: List[str],
@@ -160,6 +142,7 @@ def _make_bar_plot(
     ylabel: str,
     out_path: str,
 ) -> None:
+    # Creates a simple bar plot and saves it to disk
     plt.figure()
     plt.bar(labels, values)
     plt.title(title)
@@ -169,27 +152,22 @@ def _make_bar_plot(
     plt.close()
 
 
-# ----------------------------
-# Main function used by Flask
-# ----------------------------
+
+# Main function (used by Flask)
+
 
 def generate_results(static_root: str) -> Dict[str, Any]:
-    """
-    Called by the admin results route.
-    Creates plots in /static/results and returns:
-      summary dict + plot paths
-    """
-    # Read DB tables
+    # Reads study tables from the database
     decisions = _read_table_as_df("decisions")
     events = _read_table_as_df("events")
     surveys_raw = _read_table_as_df("surveys")
     surveys = _parse_surveys_df(surveys_raw)
 
-    # Ensure output folder exists
+    # Ensures the output folder exists
     results_dir = os.path.join(static_root, RESULTS_DIRNAME)
     os.makedirs(results_dir, exist_ok=True)
 
-    # No data?
+    # Returns early if there is no data yet
     if decisions.empty and surveys_raw.empty:
         return {
             "has_data": False,
@@ -198,13 +176,13 @@ def generate_results(static_root: str) -> Dict[str, Any]:
             "plots": {},
         }
 
-    # Clean numeric columns
+    # Converts selected decision columns to numeric when present
     if not decisions.empty:
         for col in ["correct", "time_ms", "ai_followed", "ai_seen", "explanation_opened", "ground_truth"]:
             if col in decisions.columns:
                 decisions[col] = pd.to_numeric(decisions[col], errors="coerce")
 
-    # Metrics by condition
+    # Computes metrics grouped by condition
     acc_by_cond: Dict[str, float] = {}
     time_by_cond: Dict[str, float] = {}
     follow_by_cond: Dict[str, float] = {}
@@ -216,7 +194,7 @@ def generate_results(static_root: str) -> Dict[str, Any]:
             if "correct" in g.columns and g["correct"].notna().any():
                 acc_by_cond[cond] = float(g["correct"].mean())
             if "time_ms" in g.columns and g["time_ms"].notna().any():
-                time_by_cond[cond] = float(g["time_ms"].mean() / 1000.0)  # seconds
+                time_by_cond[cond] = float(g["time_ms"].mean() / 1000.0)
             if cond == "ai" and "ai_followed" in g.columns and g["ai_followed"].notna().any():
                 follow_by_cond[cond] = float(g["ai_followed"].mean())
 
@@ -232,7 +210,7 @@ def generate_results(static_root: str) -> Dict[str, Any]:
             if "trust_score" in g.columns and g["trust_score"].notna().any():
                 trust_by_cond[cond] = float(g["trust_score"].mean())
 
-    # Collect free-text comments so you can show them on the results page
+    # Collects free-text comments for display on the results page
     comments: List[Dict[str, str]] = []
     if isinstance(surveys, pd.DataFrame) and (not surveys.empty) and "comment" in surveys.columns:
         for _, row in surveys.iterrows():
@@ -246,51 +224,53 @@ def generate_results(static_root: str) -> Dict[str, Any]:
                     }
                 )
 
-    # Plot ordering
+    # Defines how conditions should be ordered in plots
     cond_order = ["baseline", "ai"]
 
     def ordered_values(d: Dict[str, float]) -> Tuple[List[str], List[float]]:
+        # Returns labels/values in a consistent order
         labels = [c for c in cond_order if c in d]
         vals = [d[c] for c in labels]
         return labels, vals
 
     plots: Dict[str, str] = {}
 
-    # Accuracy plot
+    # Creates accuracy plot
     if acc_by_cond:
         labels, vals = ordered_values(acc_by_cond)
         out = os.path.join(results_dir, "accuracy.png")
         _make_bar_plot(labels, vals, "Accuracy by condition", "Accuracy (0–1)", out)
         plots["accuracy"] = f"/static/{RESULTS_DIRNAME}/accuracy.png"
 
-    # Time plot
+    # Creates time plot
     if time_by_cond:
         labels, vals = ordered_values(time_by_cond)
         out = os.path.join(results_dir, "time.png")
         _make_bar_plot(labels, vals, "Average decision time by condition", "Seconds", out)
         plots["time"] = f"/static/{RESULTS_DIRNAME}/time.png"
 
-    # Trust plot
+    # Creates trust plot
     if trust_by_cond:
         labels, vals = ordered_values(trust_by_cond)
         out = os.path.join(results_dir, "trust.png")
         _make_bar_plot(labels, vals, "Trust score by condition", "Average (1–5)", out)
         plots["trust"] = f"/static/{RESULTS_DIRNAME}/trust.png"
 
-    # SUS plot
+    # Creates SUS plot
     if sus_by_cond:
         labels, vals = ordered_values(sus_by_cond)
         out = os.path.join(results_dir, "sus.png")
         _make_bar_plot(labels, vals, "SUS score by condition", "SUS (0–100)", out)
         plots["sus"] = f"/static/{RESULTS_DIRNAME}/sus.png"
 
-    # AI-followed plot
+    # Creates AI-followed plot
     if follow_by_cond:
         labels, vals = ordered_values(follow_by_cond)
         out = os.path.join(results_dir, "ai_followed.png")
         _make_bar_plot(labels, vals, "AI-followed rate (AI condition)", "Rate (0–1)", out)
         plots["ai_followed"] = f"/static/{RESULTS_DIRNAME}/ai_followed.png"
 
+    # Builds the summary object returned to the results page
     summary = {
         "accuracy_by_condition": acc_by_cond,
         "time_seconds_by_condition": time_by_cond,
