@@ -11,7 +11,6 @@ import joblib
 
 from app.config import MODEL_PATH
 
-
 # Cache the loaded model so we don't reload it for every request.
 _MODEL = None
 
@@ -31,9 +30,11 @@ def _load_model():
 def _prettify_feature_name(raw_name: str) -> str:
     name = raw_name
 
+    # Remove transformer prefixes like "num__" or "cat__"
     if "__" in name:
         name = name.split("__", 1)[1]
 
+    # If it's one-hot encoded, sklearn often uses "col_value"
     if "_" in name:
         parts = name.split("_", 1)
         col, rest = parts[0], parts[1]
@@ -60,29 +61,31 @@ def _compute_contributions(model, X_dict: Dict[str, Any]) -> List[Tuple[str, flo
     """
     Approximate contributions for logistic regression: x_i * coef_i.
     Returns [] if not possible.
+
+    NOTE: For a Pipeline + ColumnTransformer, we must pass a pandas DataFrame (2D).
     """
     try:
         preprocess, clf = _get_pipeline_parts(model)
         if clf is None or not hasattr(clf, "coef_"):
             return []
 
-        # Use a 1-row "dict input" without pandas to keep server deps minimal.
-        X_input = [X_dict]
-
-        if preprocess is not None:
-            X_trans = preprocess.transform(X_input)
-
-            if hasattr(preprocess, "get_feature_names_out"):
-                feat_names = preprocess.get_feature_names_out()
-            else:
-                feat_names = np.array([f"f{i}" for i in range(X_trans.shape[1])])
-        else:
-            # If no preprocess step, assume the model can handle dicts directly.
-            # Contribution computation isn't reliable without numeric vector -> return empty.
+        if preprocess is None:
+            # Without a preprocess step we can't reliably align coef_ with raw dict features.
             return []
+
+        import pandas as pd  # local import
+        X_df = pd.DataFrame([X_dict])
+
+        X_trans = preprocess.transform(X_df)
+
+        if hasattr(preprocess, "get_feature_names_out"):
+            feat_names = preprocess.get_feature_names_out()
+        else:
+            feat_names = np.array([f"f{i}" for i in range(X_trans.shape[1])])
 
         coefs = clf.coef_.ravel()
 
+        # X_trans may be sparse
         if hasattr(X_trans, "toarray"):
             x_vals = X_trans.toarray().ravel()
         else:
@@ -90,6 +93,8 @@ def _compute_contributions(model, X_dict: Dict[str, Any]) -> List[Tuple[str, flo
 
         contributions = x_vals * coefs
         pairs = list(zip(list(feat_names), contributions.tolist()))
+
+        # remove near-zero
         pairs = [(f, c) for (f, c) in pairs if abs(c) > 1e-9]
         pairs.sort(key=lambda fc: abs(fc[1]), reverse=True)
         return pairs
@@ -110,6 +115,7 @@ def _build_explanation(contribs: List[Tuple[str, float]], recommendation: str, m
         filtered = [(f, c) for (f, c) in contribs if c < 0]
         label = "increased risk"
 
+    # If not enough in the desired direction, use top absolute impacts
     if len(filtered) < max_items:
         filtered = contribs
 
@@ -125,12 +131,23 @@ def _build_explanation(contribs: List[Tuple[str, float]], recommendation: str, m
 
 
 def get_ai_advice(features: Dict[str, Any], approval_threshold: float = 0.55) -> Dict[str, Any]:
+    """
+    Returns:
+      {
+        "recommendation": "Approve" | "Reject",
+        "confidence": 0..1,
+        "prob_approve": 0..1,
+        "explanation": [str, str, str]
+      }
+
+    NOTE: For a Pipeline + ColumnTransformer, we must pass a pandas DataFrame (2D).
+    """
     model = _load_model()
 
-    # Predict probability of approval for one row
-    X_input = [features]
+    import pandas as pd  # local import
+    X_df = pd.DataFrame([features])
 
-    probas = model.predict_proba(X_input)[0]
+    probas = model.predict_proba(X_df)[0]
     classes = getattr(model, "classes_", None)
 
     if classes is None and hasattr(model, "named_steps"):
@@ -141,6 +158,7 @@ def get_ai_advice(features: Dict[str, Any], approval_threshold: float = 0.55) ->
         idx_approve = int(np.where(np.array(classes) == 1)[0][0])
         prob_approve = float(probas[idx_approve])
     else:
+        # fallback: assume second column is class 1
         prob_approve = float(probas[1])
 
     recommendation = "Approve" if prob_approve >= approval_threshold else "Reject"
