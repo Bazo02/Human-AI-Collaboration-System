@@ -3,6 +3,13 @@
 # - Every participant completes 20 cases WITHOUT AI, then 20 cases WITH AI
 # - Decision rows are logged with condition=baseline or condition=ai
 
+from __future__ import annotations
+
+import os
+import time
+import uuid
+from typing import Dict, Any, List, Optional
+
 import pandas as pd
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 
