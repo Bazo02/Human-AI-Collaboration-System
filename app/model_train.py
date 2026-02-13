@@ -27,7 +27,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
-from config import (
+from app.config import (
     DATA_PATH,
     CASES_FOR_STUDY_PATH,
     MODEL_PATH,

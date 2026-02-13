@@ -20,7 +20,7 @@ from typing import Tuple
 
 import pandas as pd
 
-from config import (
+from app.config import (
     DATA_PATH,
     CASES_FOR_STUDY_PATH,
     TARGET_COL,

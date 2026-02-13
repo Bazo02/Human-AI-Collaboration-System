@@ -8,7 +8,7 @@ import os
 import sqlite3
 from typing import Optional, Any, Dict
 
-from config import SQLITE_DB_PATH
+from app.config import SQLITE_DB_PATH
 
 
 def _ensure_parent_dir(path: str) -> None:

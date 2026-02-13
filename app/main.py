@@ -3,33 +3,26 @@
 # - Every participant completes 20 cases WITHOUT AI, then 20 cases WITH AI
 # - Decision rows are logged with condition=baseline or condition=ai
 
-from __future__ import annotations
-
-import os
-import uuid
-import time
-from typing import Dict, Any, List, Optional
-
 import pandas as pd
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 
-from ai import get_ai_advice
-from logger import log_event, log_decision, log_survey
-from analysis import generate_results
+from app.ai import get_ai_advice
+from app.logger import log_event, log_decision, log_survey
+from app.analysis import generate_results
 
-from config import (
+from app.config import (
     SECRET_KEY,
     DATA_PATH,
     CASES_FOR_STUDY_PATH,
     TARGET_COL,
     DROP_COLS_FOR_UI,
-    CASES_PER_PARTICIPANT,          # 20 per block
-    TOTAL_CASES_PER_PARTICIPANT,    # 40 total
+    CASES_PER_PARTICIPANT,
+    TOTAL_CASES_PER_PARTICIPANT,
     APPROVAL_THRESHOLD,
     ADMIN_PASSWORD,
 )
 
-from db import (
+from app.db import (
     db_count_rows,
     db_list_participants,
     db_delete_participant,

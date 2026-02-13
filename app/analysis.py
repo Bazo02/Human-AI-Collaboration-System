@@ -11,16 +11,14 @@ import os
 import json
 from typing import Dict, Any, List, Optional, Tuple
 
-import pandas as pd
-
 # IMPORTANT: Force a non-GUI backend BEFORE importing pyplot.
-# This prevents Tkinter/thread issues when running under Flask.
 import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
-from db import get_conn
+from app.db import get_conn
 
 
 RESULTS_DIRNAME = "results"  # folder under /static
@@ -114,10 +112,12 @@ def _extract_comment(answers: Dict[str, Any]) -> str:
 def _read_table_as_df(table: str) -> pd.DataFrame:
     conn = get_conn()
     try:
-        df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
+        return pd.read_sql_query(f"SELECT * FROM {table}", conn)
+    except Exception:
+        # Table may not exist yet on fresh deploy
+        return pd.DataFrame()
     finally:
         conn.close()
-    return df
 
 
 def _parse_surveys_df(raw_surveys: pd.DataFrame) -> pd.DataFrame:
