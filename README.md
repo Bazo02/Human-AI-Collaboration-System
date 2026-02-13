@@ -6,8 +6,8 @@ This project implements a controlled experimental platform for evaluating Humanâ
 
 Participants complete 24 loan decisions.
 
-* **20 decisions without AI support**
-* **20 decisions with AI support** (recommendation + confidence + explanation)
+* **12 decisions without AI support**
+* **12 decisions with AI support** (recommendation + confidence + explanation)
 
 The system measures:
 

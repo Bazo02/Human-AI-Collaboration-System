@@ -1,6 +1,6 @@
 # app/main.py
 # Runs the Flask app for the within-subjects study.
-# Each participant completes 20 baseline cases, then 20 AI cases.
+# Each participant completes 12 baseline cases, then 12 AI cases.
 
 from __future__ import annotations
 
