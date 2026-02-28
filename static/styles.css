@@ -456,3 +456,41 @@ img {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Results Page Styling */
+
+
+.results-section {
+  margin-top: 28px;
+}
+
+.results-card {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 22px;
+  margin-bottom: 28px;
+  background: linear-gradient(180deg, hsl(0 0% 100% / 0.92), hsl(220 25% 98% / 0.88));
+  box-shadow: var(--shadow-sm);
+}
+
+.results-card h2 {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.results-card img {
+  display: block;
+  margin: 0 auto 18px auto;
+  max-width: 100%;
+  border-radius: 12px;
+}
+
+.metric-desc {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: hsl(220 25% 98%);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+}

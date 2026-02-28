@@ -135,8 +135,31 @@ def start():
     session["case_index"] = 0
     session["cases_by_block"] = _pick_cases_for_participant()
     session["started_at"] = time.time()
+    session["guidelines_ok"] = False
+    session["guidelines_shown_logged"] = False
 
     log_event(participant_id, "baseline", case_id=None, event="session_start", payload={})
+    return redirect(url_for("guidelines"))
+
+
+@app.route("/guidelines", methods=["GET", "POST"])
+def guidelines():
+    # Shows guidelines page to ensure equal participant standing before tasks begin
+    participant_id = session.get("participant_id")
+    if not participant_id:
+        return redirect(url_for("index"))
+
+    block = session.get("block", "baseline")
+
+    if request.method == "GET":
+        if not session.get("guidelines_shown_logged"):
+            log_event(participant_id, block, case_id=None, event="guidelines_shown", payload={})
+            session["guidelines_shown_logged"] = True
+        return render_template("guidelines.html", approval_threshold=APPROVAL_THRESHOLD)
+
+    # POST: participant confirms they have read the guidelines
+    session["guidelines_ok"] = True
+    log_event(participant_id, block, case_id=None, event="guidelines_accepted", payload={})
     return redirect(url_for("task"))
 
 
@@ -146,6 +169,9 @@ def transition():
     participant_id = session.get("participant_id")
     if not participant_id:
         return redirect(url_for("index"))
+
+    if not session.get("guidelines_ok"):
+        return redirect(url_for("guidelines"))
 
     if session.get("block") != "ai":
         return redirect(url_for("task"))
@@ -164,6 +190,9 @@ def task():
 
     if not participant_id or not cases:
         return redirect(url_for("index"))
+
+    if not session.get("guidelines_ok"):
+        return redirect(url_for("guidelines"))
 
     if idx >= len(cases):
         if block == "baseline":
@@ -211,6 +240,10 @@ def submit_decision():
 
     if not participant_id or not cases:
         return jsonify({"ok": False, "error": "No active session"}), 400
+
+    if not session.get("guidelines_ok"):
+        return jsonify({"ok": False, "error": "Guidelines not accepted"}), 400
+
     if idx >= len(cases):
         return jsonify({"ok": False, "error": "No more cases"}), 400
 
@@ -264,6 +297,9 @@ def survey():
     participant_id = session.get("participant_id")
     if not participant_id:
         return redirect(url_for("index"))
+
+    if not session.get("guidelines_ok"):
+        return redirect(url_for("guidelines"))
 
     if request.method == "GET":
         return render_template("survey.html")

@@ -32,8 +32,8 @@ outputs/*.json
 # -----------------------------
 # Trained models
 # -----------------------------
-*.joblib
-*.pkl
+#*.joblib
+#*.pkl
 
 # -----------------------------
 # Environment variables

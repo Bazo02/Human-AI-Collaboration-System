@@ -33,53 +33,100 @@
 
     <h2>Summary</h2>
     <pre style="background:#fafafa; padding:12px; border:1px solid #eee; border-radius:6px; overflow:auto;">{{ results.summary | tojson(indent=2) }}</pre>
-    
-<h2>Participant Comments</h2>
 
-{% if results.summary.comments and results.summary.comments|length > 0 %}
-  <div class="case-box">
-    {% for item in results.summary.comments %}
-      <div class="case-item">
-        <div>
-          <span class="case-label">Participant:</span> {{ item.participant_id }}
-          <span class="small-text">({{ item.condition }})</span>
-        </div>
-        <div class="case-value" style="margin-top:6px;">
-          {{ item.comment }}
-        </div>
+    <h2>Participant Comments</h2>
+
+    {% if results.summary.comments and results.summary.comments|length > 0 %}
+      <div class="case-box">
+        {% for item in results.summary.comments %}
+          <div class="case-item">
+            <div>
+              <span class="case-label">Participant:</span> {{ item.participant_id }}
+              <span class="small-text">({{ item.condition }})</span>
+            </div>
+            <div class="case-value" style="margin-top:6px;">
+              {{ item.comment }}
+            </div>
+          </div>
+        {% endfor %}
       </div>
-    {% endfor %}
-  </div>
-{% else %}
-  <p class="small-text">No written comments submitted yet.</p>
-{% endif %}
+    {% else %}
+      <p class="small-text">No written comments submitted yet.</p>
+    {% endif %}
 
     <h2>Plots</h2>
 
-    {% if results.plots.accuracy %}
-      <h3>Accuracy</h3>
-      <img src="{{ results.plots.accuracy }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
-    {% endif %}
+    <div class="results-section">
 
-    {% if results.plots.time %}
-      <h3>Decision Time</h3>
-      <img src="{{ results.plots.time }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
-    {% endif %}
+      {% if results.plots.accuracy %}
+        <div class="results-card">
+          <h3>Accuracy</h3>
+          <img src="{{ results.plots.accuracy }}" alt="Accuracy plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            Accuracy is computed per condition as the proportion of correct decisions.
+            Each decision is stored with <em>correct = 1</em> if the participant’s choice matches the ground-truth label for that case,
+            otherwise <em>correct = 0</em>. The plotted value is <em>Accuracy = mean(correct)</em>.
+          </p>
+        </div>
+      {% endif %}
 
-    {% if results.plots.trust %}
-      <h3>Trust</h3>
-      <img src="{{ results.plots.trust }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
-    {% endif %}
+      {% if results.plots.time %}
+        <div class="results-card">
+          <h3>Decision Time</h3>
+          <img src="{{ results.plots.time }}" alt="Decision time plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            Decision time is computed per condition as the average time spent on a decision.
+            The system logs time in milliseconds (<em>time_ms</em>), and the plotted value is the mean converted to seconds:
+            <em>Mean decision time (s) = mean(time_ms) / 1000</em>.
+          </p>
+        </div>
+      {% endif %}
 
-    {% if results.plots.sus %}
-      <h3>SUS</h3>
-      <img src="{{ results.plots.sus }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
-    {% endif %}
+      {% if results.plots.trust %}
+        <div class="results-card">
+          <h3>Trust</h3>
+          <img src="{{ results.plots.trust }}" alt="Trust plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            Trust is computed from the trust questionnaire items (<em>trust_q1</em>, <em>trust_q2</em>, <em>trust_q3</em>).
+            First, an average trust score is calculated per participant:
+            <em>Trust_participant = mean(trust_q1, trust_q2, trust_q3)</em>.
+            The plot shows the mean of these participant-level trust scores per condition.
+          </p>
+        </div>
+      {% endif %}
 
-    {% if results.plots.ai_followed %}
-      <h3>AI Followed Rate</h3>
-      <img src="{{ results.plots.ai_followed }}" style="max-width:100%; border:1px solid #eee; border-radius:6px;">
-    {% endif %}
+      {% if results.plots.sus %}
+        <div class="results-card">
+          <h3>SUS</h3>
+          <img src="{{ results.plots.sus }}" alt="SUS plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            SUS (System Usability Scale) is scored using the standard method:
+            for odd-numbered questions, <em>score = response − 1</em>;
+            for even-numbered questions, <em>score = 5 − response</em>.
+            The adjusted scores are summed and multiplied by 2.5 to produce a 0–100 SUS score.
+            The plot shows the mean SUS score per condition.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.ai_followed %}
+        <div class="results-card">
+          <h3>AI Followed Rate</h3>
+          <img src="{{ results.plots.ai_followed }}" alt="AI followed rate plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            AI followed rate is computed in the AI condition only.
+            Each decision is stored with <em>ai_followed = 1</em> if the participant followed the AI recommendation,
+            otherwise <em>ai_followed = 0</em>. The plotted value is <em>AI followed rate = mean(ai_followed)</em>.
+          </p>
+        </div>
+      {% endif %}
+
+    </div>
   {% endif %}
 </div>
 </body>
