@@ -109,6 +109,60 @@ def db_list_participants() -> list[str]:
     return cleaned
 
 
+def db_get_participant_stats() -> list[dict]:
+    # Returns sorted participant IDs with row counts from all tables (excluding ADMIN)
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        WITH participant_ids AS (
+            SELECT participant_id FROM decisions
+            UNION
+            SELECT participant_id FROM surveys
+            UNION
+            SELECT participant_id FROM events
+        )
+        SELECT
+            p.participant_id,
+            COALESCE(d.decisions_count, 0) AS decisions_count,
+            COALESCE(e.events_count, 0) AS events_count,
+            COALESCE(s.surveys_count, 0) AS surveys_count
+        FROM participant_ids p
+        LEFT JOIN (
+            SELECT participant_id, COUNT(*) AS decisions_count
+            FROM decisions
+            GROUP BY participant_id
+        ) d ON p.participant_id = d.participant_id
+        LEFT JOIN (
+            SELECT participant_id, COUNT(*) AS events_count
+            FROM events
+            GROUP BY participant_id
+        ) e ON p.participant_id = e.participant_id
+        LEFT JOIN (
+            SELECT participant_id, COUNT(*) AS surveys_count
+            FROM surveys
+            GROUP BY participant_id
+        ) s ON p.participant_id = s.participant_id
+        WHERE p.participant_id IS NOT NULL
+          AND TRIM(p.participant_id) != ''
+          AND p.participant_id != 'ADMIN'
+        ORDER BY p.participant_id
+    """)
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return [
+        {
+            "participant_id": row[0],
+            "decisions": int(row[1]),
+            "events": int(row[2]),
+            "surveys": int(row[3]),
+        }
+        for row in rows
+    ]
+
+
 def db_delete_participant(participant_id: str) -> dict:
     # Deletes one participant from all tables and returns deleted row counts
     conn = get_conn()

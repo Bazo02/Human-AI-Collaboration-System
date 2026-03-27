@@ -10,7 +10,7 @@ import uuid
 from typing import Dict, Any, List, Optional
 
 import pandas as pd
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file
 
 from app.ai import get_ai_advice
 from app.logger import log_event, log_decision, log_survey
@@ -26,14 +26,15 @@ from app.config import (
     TOTAL_CASES_PER_PARTICIPANT,
     APPROVAL_THRESHOLD,
     ADMIN_PASSWORD,
+    SQLITE_DB_PATH,
 )
 
 from app.db import (
     db_count_rows,
-    db_list_participants,
+    db_get_participant_stats,
     db_delete_participant,
-    db_clear_table,
     db_clear_all,
+    init_db,
 )
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -344,7 +345,7 @@ def admin_dashboard():
         "events": db_count_rows("events"),
         "surveys": db_count_rows("surveys"),
     }
-    participants = db_list_participants()
+    participants = db_get_participant_stats()
     return render_template("admin_dashboard.html", counts=counts, participants=participants)
 
 
@@ -358,15 +359,34 @@ def admin_results():
     return render_template("results.html", results=results)
 
 
-@app.route("/admin/clear/<logname>", methods=["POST"])
-def admin_clear_one(logname: str):
+@app.route("/admin/download_db", methods=["GET"])
+def admin_download_db():
     r = _require_admin()
     if r:
         return r
 
-    table_map = {"decisions": "decisions", "events": "events", "surveys": "surveys"}
-    if logname in table_map:
-        db_clear_table(table_map[logname])
+    if not os.path.exists(SQLITE_DB_PATH):
+        init_db()
+
+    return send_file(
+        SQLITE_DB_PATH,
+        as_attachment=True,
+        download_name="study.db",
+        mimetype="application/x-sqlite3",
+    )
+
+
+@app.route("/admin/upload_db", methods=["POST"])
+def admin_upload_db():
+    r = _require_admin()
+    if r:
+        return r
+
+    uploaded_file = request.files.get("db_file")
+    if uploaded_file and uploaded_file.filename:
+        os.makedirs(os.path.dirname(SQLITE_DB_PATH), exist_ok=True)
+        uploaded_file.save(SQLITE_DB_PATH)
+        init_db()
 
     return redirect(url_for("admin_dashboard"))
 
