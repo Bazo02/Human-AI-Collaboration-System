@@ -25,10 +25,34 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    rows = cur.fetchall()
+    return any(str(row[1]) == column for row in rows)
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str) -> None:
+    if not _column_exists(conn, table, column):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
+
 def init_db() -> None:
     # Creates tables if they do not already exist
     conn = get_conn()
     cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS participants (
+        participant_id TEXT PRIMARY KEY,
+        ts_utc TEXT NOT NULL,
+        age_group TEXT,
+        background TEXT,
+        ai_familiarity TEXT,
+        finance_familiarity TEXT,
+        completed INTEGER NOT NULL DEFAULT 0
+    )
+    """)
 
     # Creates events table
     cur.execute("""
@@ -72,6 +96,10 @@ def init_db() -> None:
     )
     """)
 
+    _ensure_column(conn, "decisions", "ai_recommendation", "TEXT")
+    _ensure_column(conn, "decisions", "ai_confidence", "REAL")
+    _ensure_column(conn, "decisions", "ai_prob_approve", "REAL")
+
     conn.commit()
     conn.close()
 
@@ -94,8 +122,9 @@ def db_list_participants() -> list[str]:
     conn = get_conn()
     cur = conn.cursor()
 
-    # Collects participant IDs from all tables
     cur.execute("""
+        SELECT DISTINCT participant_id FROM participants
+        UNION
         SELECT DISTINCT participant_id FROM decisions
         UNION
         SELECT DISTINCT participant_id FROM surveys
@@ -116,6 +145,8 @@ def db_get_participant_stats() -> list[dict]:
 
     cur.execute("""
         WITH participant_ids AS (
+            SELECT participant_id FROM participants
+            UNION
             SELECT participant_id FROM decisions
             UNION
             SELECT participant_id FROM surveys
@@ -126,7 +157,12 @@ def db_get_participant_stats() -> list[dict]:
             p.participant_id,
             COALESCE(d.decisions_count, 0) AS decisions_count,
             COALESCE(e.events_count, 0) AS events_count,
-            COALESCE(s.surveys_count, 0) AS surveys_count
+            COALESCE(s.surveys_count, 0) AS surveys_count,
+            COALESCE(pt.completed, 0) AS completed,
+            COALESCE(pt.age_group, '') AS age_group,
+            COALESCE(pt.background, '') AS background,
+            COALESCE(pt.ai_familiarity, '') AS ai_familiarity,
+            COALESCE(pt.finance_familiarity, '') AS finance_familiarity
         FROM participant_ids p
         LEFT JOIN (
             SELECT participant_id, COUNT(*) AS decisions_count
@@ -143,6 +179,7 @@ def db_get_participant_stats() -> list[dict]:
             FROM surveys
             GROUP BY participant_id
         ) s ON p.participant_id = s.participant_id
+        LEFT JOIN participants pt ON p.participant_id = pt.participant_id
         WHERE p.participant_id IS NOT NULL
           AND TRIM(p.participant_id) != ''
           AND p.participant_id != 'ADMIN'
@@ -158,6 +195,11 @@ def db_get_participant_stats() -> list[dict]:
             "decisions": int(row[1]),
             "events": int(row[2]),
             "surveys": int(row[3]),
+            "completed": int(row[4]),
+            "age_group": row[5],
+            "background": row[6],
+            "ai_familiarity": row[7],
+            "finance_familiarity": row[8],
         }
         for row in rows
     ]
@@ -183,10 +225,15 @@ def db_delete_participant(participant_id: str) -> dict:
     cur.execute("DELETE FROM events WHERE participant_id = ?", (participant_id,))
     e_deleted = e_before
 
+    cur.execute("SELECT COUNT(*) FROM participants WHERE participant_id = ?", (participant_id,))
+    p_before = int(cur.fetchone()[0])
+    cur.execute("DELETE FROM participants WHERE participant_id = ?", (participant_id,))
+    p_deleted = p_before
+
     conn.commit()
     conn.close()
 
-    return {"decisions": d_deleted, "surveys": s_deleted, "events": e_deleted}
+    return {"decisions": d_deleted, "surveys": s_deleted, "events": e_deleted, "participants": p_deleted}
 
 
 def db_clear_table(table: str) -> int:
@@ -204,6 +251,7 @@ def db_clear_table(table: str) -> int:
 def db_clear_all() -> dict:
     # Clears all study tables and returns deleted row counts
     return {
+        "participants": db_clear_table("participants"),
         "events": db_clear_table("events"),
         "decisions": db_clear_table("decisions"),
         "surveys": db_clear_table("surveys"),

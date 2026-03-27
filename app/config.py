@@ -24,6 +24,7 @@ OUTPUTS_DIR = os.path.join(PROJECT_ROOT, "outputs")
 DATA_PATH = os.path.join(DATA_DIR, "loanapproval.csv")
 CASES_FOR_STUDY_PATH = os.path.join(DATA_DIR, "cases_for_study.csv")
 MODEL_PATH = os.path.join(PROJECT_ROOT, "app", "model.joblib")
+PARTICIPANT_SUMMARY_PATH = os.path.join(OUTPUTS_DIR, "participant_summary.csv")
 
 
 # Dataset / feature settings

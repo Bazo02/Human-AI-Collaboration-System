@@ -9,7 +9,7 @@
 </head>
 <body>
 <div class="container">
-  <div style="display:flex; justify-content: space-between; align-items:center;">
+  <div style="display:flex; justify-content: space-between; align-items:center; gap: 16px; flex-wrap: wrap;">
     <h1>Study Results</h1>
     <div>
       <a href="/admin/dashboard" class="small-text" style="margin-right:12px;">Admin Dashboard</a>
@@ -26,16 +26,286 @@
   {% if not results.has_data %}
     <p>{{ results.message }}</p>
   {% else %}
-    <p class="small-text">
-      Decisions logged: {{ results.summary.n_decisions }} |
-      Surveys logged: {{ results.summary.n_surveys }}
-    </p>
 
-    <h2>Summary</h2>
-    <pre style="background:#fafafa; padding:12px; border:1px solid #eee; border-radius:6px; overflow:auto;">{{ results.summary | tojson(indent=2) }}</pre>
+    <div class="button-group" style="margin-bottom: 20px;">
+      <a href="/admin/download_participant_summary" class="btn-secondary">Download Participant Summary CSV</a>
+    </div>
+
+    <div class="case-box" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
+      <div class="survey-question" style="margin-bottom:0;">
+        <div class="small-text">Participants logged</div>
+        <div style="font-size: 28px; font-weight: 800;">{{ results.summary.n_participants }}</div>
+      </div>
+      <div class="survey-question" style="margin-bottom:0;">
+        <div class="small-text">Completed participants</div>
+        <div style="font-size: 28px; font-weight: 800;">{{ results.summary.n_completed_participants }}</div>
+      </div>
+      <div class="survey-question" style="margin-bottom:0;">
+        <div class="small-text">Decisions logged</div>
+        <div style="font-size: 28px; font-weight: 800;">{{ results.summary.n_decisions }}</div>
+      </div>
+      <div class="survey-question" style="margin-bottom:0;">
+        <div class="small-text">Surveys logged</div>
+        <div style="font-size: 28px; font-weight: 800;">{{ results.summary.n_surveys }}</div>
+      </div>
+      <div class="survey-question" style="margin-bottom:0;">
+        <div class="small-text">Events logged</div>
+        <div style="font-size: 28px; font-weight: 800;">{{ results.summary.n_events }}</div>
+      </div>
+    </div>
+
+    <h2>Overview</h2>
+    <div class="case-box" style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Baseline</th>
+            <th>AI</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Accuracy</td>
+            <td>
+              {% if results.summary.accuracy_by_condition and 'baseline' in results.summary.accuracy_by_condition %}
+                {{ "%.3f"|format(results.summary.accuracy_by_condition.baseline) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+            <td>
+              {% if results.summary.accuracy_by_condition and 'ai' in results.summary.accuracy_by_condition %}
+                {{ "%.3f"|format(results.summary.accuracy_by_condition.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>Decision time (seconds)</td>
+            <td>
+              {% if results.summary.time_seconds_by_condition and 'baseline' in results.summary.time_seconds_by_condition %}
+                {{ "%.3f"|format(results.summary.time_seconds_by_condition.baseline) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+            <td>
+              {% if results.summary.time_seconds_by_condition and 'ai' in results.summary.time_seconds_by_condition %}
+                {{ "%.3f"|format(results.summary.time_seconds_by_condition.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>Trust</td>
+            <td>N/A</td>
+            <td>
+              {% if results.summary.trust_by_condition and 'ai' in results.summary.trust_by_condition %}
+                {{ "%.3f"|format(results.summary.trust_by_condition.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>SUS</td>
+            <td>N/A</td>
+            <td>
+              {% if results.summary.sus_by_condition and 'ai' in results.summary.sus_by_condition %}
+                {{ "%.3f"|format(results.summary.sus_by_condition.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>AI followed rate</td>
+            <td>N/A</td>
+            <td>
+              {% if results.summary.ai_followed_rate and 'ai' in results.summary.ai_followed_rate %}
+                {{ "%.3f"|format(results.summary.ai_followed_rate.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>AI confidence</td>
+            <td>N/A</td>
+            <td>
+              {% if results.summary.ai_confidence_by_condition and 'ai' in results.summary.ai_confidence_by_condition %}
+                {{ "%.3f"|format(results.summary.ai_confidence_by_condition.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>AI approval probability</td>
+            <td>N/A</td>
+            <td>
+              {% if results.summary.ai_prob_approve_by_condition and 'ai' in results.summary.ai_prob_approve_by_condition %}
+                {{ "%.3f"|format(results.summary.ai_prob_approve_by_condition.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>Explanation open rate</td>
+            <td>
+              {% if results.summary.explanation_open_rate_by_condition and 'baseline' in results.summary.explanation_open_rate_by_condition %}
+                {{ "%.3f"|format(results.summary.explanation_open_rate_by_condition.baseline) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+            <td>
+              {% if results.summary.explanation_open_rate_by_condition and 'ai' in results.summary.explanation_open_rate_by_condition %}
+                {{ "%.3f"|format(results.summary.explanation_open_rate_by_condition.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td>AI seen rate</td>
+            <td>
+              {% if results.summary.ai_seen_rate_by_condition and 'baseline' in results.summary.ai_seen_rate_by_condition %}
+                {{ "%.3f"|format(results.summary.ai_seen_rate_by_condition.baseline) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+            <td>
+              {% if results.summary.ai_seen_rate_by_condition and 'ai' in results.summary.ai_seen_rate_by_condition %}
+                {{ "%.3f"|format(results.summary.ai_seen_rate_by_condition.ai) }}
+              {% else %}
+                N/A
+              {% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Paired Comparisons</h2>
+    <div class="case-box" style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Comparison</th>
+            <th>n</th>
+            <th>Baseline mean</th>
+            <th>AI mean</th>
+            <th>Mean difference</th>
+            <th>t</th>
+            <th>p</th>
+            <th>Cohen's d<sub>z</sub></th>
+            <th>95% CI</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set paired = results.summary.paired_tests %}
+          {% if paired and paired.accuracy %}
+            <tr>
+              <td>Accuracy</td>
+              <td>{{ paired.accuracy.n if paired.accuracy.n is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.accuracy.baseline_mean) if paired.accuracy.baseline_mean is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.accuracy.ai_mean) if paired.accuracy.ai_mean is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.accuracy.mean_difference) if paired.accuracy.mean_difference is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.accuracy.t_statistic) if paired.accuracy.t_statistic is not none else "N/A" }}</td>
+              <td>{{ "%.4f"|format(paired.accuracy.p_value) if paired.accuracy.p_value is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.accuracy.cohens_dz) if paired.accuracy.cohens_dz is not none else "N/A" }}</td>
+              <td>
+                {% if paired.accuracy.ci95_low is not none and paired.accuracy.ci95_high is not none %}
+                  [{{ "%.3f"|format(paired.accuracy.ci95_low) }}, {{ "%.3f"|format(paired.accuracy.ci95_high) }}]
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+            </tr>
+          {% endif %}
+
+          {% if paired and paired.decision_time_seconds %}
+            <tr>
+              <td>Decision time (seconds)</td>
+              <td>{{ paired.decision_time_seconds.n if paired.decision_time_seconds.n is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.decision_time_seconds.baseline_mean) if paired.decision_time_seconds.baseline_mean is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.decision_time_seconds.ai_mean) if paired.decision_time_seconds.ai_mean is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.decision_time_seconds.mean_difference) if paired.decision_time_seconds.mean_difference is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.decision_time_seconds.t_statistic) if paired.decision_time_seconds.t_statistic is not none else "N/A" }}</td>
+              <td>{{ "%.4f"|format(paired.decision_time_seconds.p_value) if paired.decision_time_seconds.p_value is not none else "N/A" }}</td>
+              <td>{{ "%.3f"|format(paired.decision_time_seconds.cohens_dz) if paired.decision_time_seconds.cohens_dz is not none else "N/A" }}</td>
+              <td>
+                {% if paired.decision_time_seconds.ci95_low is not none and paired.decision_time_seconds.ci95_high is not none %}
+                  [{{ "%.3f"|format(paired.decision_time_seconds.ci95_low) }}, {{ "%.3f"|format(paired.decision_time_seconds.ci95_high) }}]
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Participant Summary</h2>
+    {% if results.summary.participant_summary_preview and results.summary.participant_summary_preview|length > 0 %}
+      <div class="case-box" style="overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Participant</th>
+              <th>Age group</th>
+              <th>Background</th>
+              <th>AI familiarity</th>
+              <th>Finance familiarity</th>
+              <th>Completed</th>
+              <th>Baseline accuracy</th>
+              <th>AI accuracy</th>
+              <th>Baseline time</th>
+              <th>AI time</th>
+              <th>AI followed rate</th>
+              <th>AI confidence</th>
+              <th>AI approval probability</th>
+              <th>Explanation open rate</th>
+              <th>Trust</th>
+              <th>SUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in results.summary.participant_summary_preview %}
+              <tr>
+                <td>{{ row.participant_id if row.participant_id not in [none, ""] else "N/A" }}</td>
+                <td>{{ row.age_group if row.age_group not in [none, ""] else "N/A" }}</td>
+                <td>{{ row.background if row.background not in [none, ""] else "N/A" }}</td>
+                <td>{{ row.ai_familiarity if row.ai_familiarity not in [none, ""] else "N/A" }}</td>
+                <td>{{ row.finance_familiarity if row.finance_familiarity not in [none, ""] else "N/A" }}</td>
+                <td>{{ "Yes" if row.completed else "No" }}</td>
+                <td>{{ row.baseline_accuracy if row.baseline_accuracy == row.baseline_accuracy else "N/A" }}</td>
+                <td>{{ row.ai_accuracy if row.ai_accuracy == row.ai_accuracy else "N/A" }}</td>
+                <td>{{ row.baseline_avg_time_seconds if row.baseline_avg_time_seconds == row.baseline_avg_time_seconds else "N/A" }}</td>
+                <td>{{ row.ai_avg_time_seconds if row.ai_avg_time_seconds == row.ai_avg_time_seconds else "N/A" }}</td>
+                <td>{{ row.ai_ai_followed_rate if row.ai_ai_followed_rate == row.ai_ai_followed_rate else "N/A" }}</td>
+                <td>{{ row.ai_avg_ai_confidence if row.ai_avg_ai_confidence == row.ai_avg_ai_confidence else "N/A" }}</td>
+                <td>{{ row.ai_avg_ai_prob_approve if row.ai_avg_ai_prob_approve == row.ai_avg_ai_prob_approve else "N/A" }}</td>
+                <td>{{ row.ai_explanation_open_rate if row.ai_explanation_open_rate == row.ai_explanation_open_rate else "N/A" }}</td>
+                <td>{{ row.trust_score if row.trust_score == row.trust_score else "N/A" }}</td>
+                <td>{{ row.sus_score if row.sus_score == row.sus_score else "N/A" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="small-text">No participant summary available yet.</p>
+    {% endif %}
 
     <h2>Participant Comments</h2>
-
     {% if results.summary.comments and results.summary.comments|length > 0 %}
       <div class="case-box">
         {% for item in results.summary.comments %}
@@ -64,9 +334,8 @@
           <img src="{{ results.plots.accuracy }}" alt="Accuracy plot">
           <p class="metric-desc">
             <strong>How it is calculated:</strong>
-            Accuracy is computed per condition as the proportion of correct decisions.
-            Each decision is stored with <em>correct = 1</em> if the participant’s choice matches the ground-truth label for that case,
-            otherwise <em>correct = 0</em>. The plotted value is <em>Accuracy = mean(correct)</em>.
+            Accuracy is first computed per participant and condition as the proportion of correct decisions.
+            The plotted value is the mean of those participant-level accuracy values for each condition.
           </p>
         </div>
       {% endif %}
@@ -77,9 +346,8 @@
           <img src="{{ results.plots.time }}" alt="Decision time plot">
           <p class="metric-desc">
             <strong>How it is calculated:</strong>
-            Decision time is computed per condition as the average time spent on a decision.
-            The system logs time in milliseconds (<em>time_ms</em>), and the plotted value is the mean converted to seconds:
-            <em>Mean decision time (s) = mean(time_ms) / 1000</em>.
+            Decision time is first computed per participant and condition as the mean time in seconds.
+            The plotted value is the mean of those participant-level time values for each condition.
           </p>
         </div>
       {% endif %}
@@ -91,9 +359,8 @@
           <p class="metric-desc">
             <strong>How it is calculated:</strong>
             Trust is computed from the trust questionnaire items (<em>trust_q1</em>, <em>trust_q2</em>, <em>trust_q3</em>).
-            First, an average trust score is calculated per participant:
-            <em>Trust_participant = mean(trust_q1, trust_q2, trust_q3)</em>.
-            The plot shows the mean of these participant-level trust scores per condition.
+            First, an average trust score is calculated per participant.
+            The plot shows the mean of those participant-level trust scores.
           </p>
         </div>
       {% endif %}
@@ -108,7 +375,7 @@
             for odd-numbered questions, <em>score = response − 1</em>;
             for even-numbered questions, <em>score = 5 − response</em>.
             The adjusted scores are summed and multiplied by 2.5 to produce a 0–100 SUS score.
-            The plot shows the mean SUS score per condition.
+            The plot shows the mean participant-level SUS score.
           </p>
         </div>
       {% endif %}
@@ -120,8 +387,100 @@
           <p class="metric-desc">
             <strong>How it is calculated:</strong>
             AI followed rate is computed in the AI condition only.
-            Each decision is stored with <em>ai_followed = 1</em> if the participant followed the AI recommendation,
-            otherwise <em>ai_followed = 0</em>. The plotted value is <em>AI followed rate = mean(ai_followed)</em>.
+            For each participant, it is the proportion of AI-condition cases where the participant’s decision matched the AI recommendation.
+            The plotted value is the mean of those participant-level rates.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.ai_confidence %}
+        <div class="results-card">
+          <h3>AI Confidence</h3>
+          <img src="{{ results.plots.ai_confidence }}" alt="AI confidence plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            AI confidence is averaged across AI-condition decisions for each participant.
+            The plotted value is the mean of those participant-level average confidence values.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.ai_prob_approve %}
+        <div class="results-card">
+          <h3>AI Approval Probability</h3>
+          <img src="{{ results.plots.ai_prob_approve }}" alt="AI approval probability plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            The model’s approval probability is averaged across AI-condition decisions for each participant.
+            The plotted value is the mean of those participant-level average probabilities.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.explanation_open_rate %}
+        <div class="results-card">
+          <h3>Explanation Open Rate</h3>
+          <img src="{{ results.plots.explanation_open_rate }}" alt="Explanation open rate plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            Explanation open rate is computed per participant and condition as the proportion of cases where the explanation was opened.
+            The plotted value is the mean of those participant-level rates.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.ai_seen_rate %}
+        <div class="results-card">
+          <h3>AI Seen Rate</h3>
+          <img src="{{ results.plots.ai_seen_rate }}" alt="AI seen rate plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            AI seen rate is computed per participant and condition as the proportion of cases where the AI panel was present.
+            The plotted value is the mean of those participant-level rates.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.age_group_distribution %}
+        <div class="results-card">
+          <h3>Age Group Distribution</h3>
+          <img src="{{ results.plots.age_group_distribution }}" alt="Age group distribution plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            This plot shows the number of participants in each recorded age group.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.background_distribution %}
+        <div class="results-card">
+          <h3>Background Distribution</h3>
+          <img src="{{ results.plots.background_distribution }}" alt="Background distribution plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            This plot shows the number of participants in each recorded background category.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.ai_familiarity_distribution %}
+        <div class="results-card">
+          <h3>AI Familiarity Distribution</h3>
+          <img src="{{ results.plots.ai_familiarity_distribution }}" alt="AI familiarity distribution plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            This plot shows the number of participants in each recorded AI familiarity category.
+          </p>
+        </div>
+      {% endif %}
+
+      {% if results.plots.finance_familiarity_distribution %}
+        <div class="results-card">
+          <h3>Finance Familiarity Distribution</h3>
+          <img src="{{ results.plots.finance_familiarity_distribution }}" alt="Finance familiarity distribution plot">
+          <p class="metric-desc">
+            <strong>How it is calculated:</strong>
+            This plot shows the number of participants in each recorded finance familiarity category.
           </p>
         </div>
       {% endif %}

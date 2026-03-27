@@ -70,10 +70,9 @@ def _compute_contributions(model, X_dict: Dict[str, Any]) -> List[Tuple[str, flo
             return []
 
         if preprocess is None:
-            # Without a preprocess step we can't reliably align coef_ with raw dict features.
             return []
 
-        import pandas as pd  # local import
+        import pandas as pd
         X_df = pd.DataFrame([X_dict])
 
         X_trans = preprocess.transform(X_df)
@@ -85,7 +84,6 @@ def _compute_contributions(model, X_dict: Dict[str, Any]) -> List[Tuple[str, flo
 
         coefs = clf.coef_.ravel()
 
-        # X_trans may be sparse
         if hasattr(X_trans, "toarray"):
             x_vals = X_trans.toarray().ravel()
         else:
@@ -94,7 +92,6 @@ def _compute_contributions(model, X_dict: Dict[str, Any]) -> List[Tuple[str, flo
         contributions = x_vals * coefs
         pairs = list(zip(list(feat_names), contributions.tolist()))
 
-        # remove near-zero
         pairs = [(f, c) for (f, c) in pairs if abs(c) > 1e-9]
         pairs.sort(key=lambda fc: abs(fc[1]), reverse=True)
         return pairs
@@ -115,7 +112,6 @@ def _build_explanation(contribs: List[Tuple[str, float]], recommendation: str, m
         filtered = [(f, c) for (f, c) in contribs if c < 0]
         label = "increased risk"
 
-    # If not enough in the desired direction, use top absolute impacts
     if len(filtered) < max_items:
         filtered = contribs
 
@@ -130,7 +126,7 @@ def _build_explanation(contribs: List[Tuple[str, float]], recommendation: str, m
     return reasons[:max_items]
 
 
-def get_ai_advice(features: Dict[str, Any], approval_threshold: float = 0.55) -> Dict[str, Any]:
+def get_ai_advice(features: Dict[str, Any], approval_threshold: float = 0.65) -> Dict[str, Any]:
     """
     Returns:
       {
@@ -144,7 +140,7 @@ def get_ai_advice(features: Dict[str, Any], approval_threshold: float = 0.55) ->
     """
     model = _load_model()
 
-    import pandas as pd  # local import
+    import pandas as pd
     X_df = pd.DataFrame([features])
 
     probas = model.predict_proba(X_df)[0]
@@ -158,7 +154,6 @@ def get_ai_advice(features: Dict[str, Any], approval_threshold: float = 0.55) ->
         idx_approve = int(np.where(np.array(classes) == 1)[0][0])
         prob_approve = float(probas[idx_approve])
     else:
-        # fallback: assume second column is class 1
         prob_approve = float(probas[1])
 
     recommendation = "Approve" if prob_approve >= approval_threshold else "Reject"

@@ -13,7 +13,7 @@ import pandas as pd
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file
 
 from app.ai import get_ai_advice
-from app.logger import log_event, log_decision, log_survey
+from app.logger import log_event, log_decision, log_survey, log_participant, mark_participant_completed
 from app.analysis import generate_results
 
 from app.config import (
@@ -27,6 +27,7 @@ from app.config import (
     APPROVAL_THRESHOLD,
     ADMIN_PASSWORD,
     SQLITE_DB_PATH,
+    PARTICIPANT_SUMMARY_PATH,
 )
 
 from app.db import (
@@ -130,6 +131,11 @@ def start():
     if not participant_id:
         participant_id = f"p_{uuid.uuid4().hex[:8]}"
 
+    age_group = request.form.get("age_group", "").strip()
+    background = request.form.get("background", "").strip()
+    ai_familiarity = request.form.get("ai_familiarity", "").strip()
+    finance_familiarity = request.form.get("finance_familiarity", "").strip()
+
     session.clear()
     session["participant_id"] = participant_id
     session["block"] = "baseline"
@@ -139,6 +145,13 @@ def start():
     session["guidelines_ok"] = False
     session["guidelines_shown_logged"] = False
 
+    log_participant(
+        participant_id=participant_id,
+        age_group=age_group,
+        background=background,
+        ai_familiarity=ai_familiarity,
+        finance_familiarity=finance_familiarity,
+    )
     log_event(participant_id, "baseline", case_id=None, event="session_start", payload={})
     return redirect(url_for("guidelines"))
 
@@ -264,6 +277,18 @@ def submit_decision():
     gt = int(current_case.get(TARGET_COL))
     correct = int((decision == "Approve" and gt == 1) or (decision == "Reject" and gt == 0))
 
+    ai_recommendation = None
+    ai_confidence = None
+    ai_prob_approve = None
+    if block == "ai":
+        ai_payload = get_ai_advice(
+            features=_features_for_model(current_case),
+            approval_threshold=APPROVAL_THRESHOLD
+        )
+        ai_recommendation = ai_payload.get("recommendation")
+        ai_confidence = ai_payload.get("confidence")
+        ai_prob_approve = ai_payload.get("prob_approve")
+
     log_decision(
         participant_id=participant_id,
         condition=block,
@@ -275,6 +300,9 @@ def submit_decision():
         ai_followed=payload.get("ai_followed"),
         ai_seen=payload.get("ai_seen"),
         explanation_opened=payload.get("explanation_opened"),
+        ai_recommendation=ai_recommendation,
+        ai_confidence=ai_confidence,
+        ai_prob_approve=ai_prob_approve,
     )
 
     session["case_index"] = idx + 1
@@ -306,7 +334,9 @@ def survey():
         return render_template("survey.html")
 
     log_survey(participant_id=participant_id, condition="ai", answers=dict(request.form.items()))
+    mark_participant_completed(participant_id)
     log_event(participant_id, "ai", case_id=None, event="survey_submitted", payload={})
+    log_event(participant_id, "ai", case_id=None, event="study_completed", payload={})
     return redirect(url_for("done"))
 
 
@@ -341,6 +371,7 @@ def admin_dashboard():
         return r
 
     counts = {
+        "participants": db_count_rows("participants"),
         "decisions": db_count_rows("decisions"),
         "events": db_count_rows("events"),
         "surveys": db_count_rows("surveys"),
@@ -373,6 +404,25 @@ def admin_download_db():
         as_attachment=True,
         download_name="study.db",
         mimetype="application/x-sqlite3",
+    )
+
+
+@app.route("/admin/download_participant_summary", methods=["GET"])
+def admin_download_participant_summary():
+    r = _require_admin()
+    if r:
+        return r
+
+    generate_results(app.static_folder)
+
+    if not os.path.exists(PARTICIPANT_SUMMARY_PATH):
+        return redirect(url_for("admin_results"))
+
+    return send_file(
+        PARTICIPANT_SUMMARY_PATH,
+        as_attachment=True,
+        download_name="participant_summary.csv",
+        mimetype="text/csv",
     )
 
 
