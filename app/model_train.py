@@ -60,7 +60,7 @@ def main() -> None:
     # Converts target to int 0/1
     df[TARGET_COL] = df[TARGET_COL].astype(int)
 
-    # Fills missing values in a simple and transparent way
+    # Fills missing values 
     for col in df.columns:
         if col == TARGET_COL:
             continue

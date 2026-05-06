@@ -4,7 +4,7 @@
 
 This project implements a controlled experimental platform for evaluating Human–AI collaboration in loan decision making.
 
-Participants complete 24 loan decisions.
+Participants complete 24 loan decisions:
 
 * **12 decisions without AI support**
 * **12 decisions with AI support** (recommendation + confidence + explanation)
@@ -48,49 +48,22 @@ An admin interface provides:
 
 ```bash
 python -m venv venv
+
 venv\Scripts\activate   # Windows
-source venv/bin/activate # Mac
+source venv/bin/activate # Mac/Linux
+
 pip install -r requirements.txt
 ```
 
 ---
 
-## Running from main branch
+## Run Locally From Deploy Branch (Meant for Render)
 
-Prepare data and train model:
-
-```bash
-python app/data_prep.py
-python app/model_train.py
-```
-
-Start the server:
-
-```bash
-python app/main.py
-```
-
-Open:
-
-```
-http://127.0.0.1:5000
-```
-
-Admin panel:
-
-```
-http://127.0.0.1:5000/admin
-```
-
----
-
-
-## Run localy from deploy branch (meant for renderer) 
-
-From the project root directory:
+Run the following commands from the project root directory:
 
 ```bash
 python -m venv venv
+
 venv\Scripts\activate   # Windows
 # source venv/bin/activate  # Mac/Linux
 
@@ -103,25 +76,23 @@ python -m app.main
 
 Then open:
 
-```
+```text
 http://127.0.0.1:5000
 ```
 
 **Important:** Run the commands from the project root folder, not inside `/app`.
 
-```
-
-```
+---
 
 ## Data
 
 All study data is stored in:
 
-```
+```text
 /outputs/study.db
 ```
 
-Tables:
+### Tables
 
 * `decisions`
 * `events`
@@ -136,5 +107,3 @@ The system enables controlled evaluation of:
 * Human-only vs AI-assisted performance
 * Trust and reliance in AI systems
 * Effects of AI explanations on decision making
-
-

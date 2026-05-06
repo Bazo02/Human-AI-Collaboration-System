@@ -11,7 +11,7 @@ import joblib
 
 from app.config import MODEL_PATH
 
-# Cache the loaded model so we don't reload it for every request.
+
 _MODEL = None
 
 
@@ -30,11 +30,11 @@ def _load_model():
 def _prettify_feature_name(raw_name: str) -> str:
     name = raw_name
 
-    # Remove transformer prefixes like "num__" or "cat__"
+   
     if "__" in name:
         name = name.split("__", 1)[1]
 
-    # If it's one-hot encoded, sklearn often uses "col_value"
+    
     if "_" in name:
         parts = name.split("_", 1)
         col, rest = parts[0], parts[1]
