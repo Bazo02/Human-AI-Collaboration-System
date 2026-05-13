@@ -1,5 +1,4 @@
 # app/analysis.py
-# Reads study data from SQLite and creates summary + plots for the admin results page.
 
 from __future__ import annotations
 
@@ -26,12 +25,7 @@ except Exception:
 RESULTS_DIRNAME = "results"
 
 
-
-# Survey scoring helpers:
-
-
 def _to_int(x) -> Optional[int]:
-    # Tries to convert a value to int and returns None on failure
     try:
         return int(x)
     except Exception:
@@ -39,7 +33,6 @@ def _to_int(x) -> Optional[int]:
 
 
 def _compute_sus_from_answers(answers: Dict[str, Any]) -> Optional[float]:
-    # Computes SUS (0..100) from sus_q1..sus_q10
     scores: List[int] = []
     for i in range(1, 11):
         key = f"sus_q{i}"
@@ -54,7 +47,6 @@ def _compute_sus_from_answers(answers: Dict[str, Any]) -> Optional[float]:
 
 
 def _compute_trust_from_answers(answers: Dict[str, Any]) -> Optional[float]:
-    # Computes trust score as the average of trust_q1..trust_q3 (1..5)
     vals = []
     for k in ["trust_q1", "trust_q2", "trust_q3"]:
         v = _to_int(answers.get(k))
@@ -65,44 +57,31 @@ def _compute_trust_from_answers(answers: Dict[str, Any]) -> Optional[float]:
 
 
 def _extract_comment(answers: Dict[str, Any]) -> str:
-    # Extracts a free-text comment from the survey answers
     candidate_keys = [
         "comment", "comments", "feedback", "message",
         "free_text", "additional_feedback", "open_feedback",
         "participant_comment", "notes"
     ]
-
     for k in candidate_keys:
         if k in answers:
             txt = str(answers.get(k, "")).strip()
             if txt:
                 return txt
-
-    # Falls back to any non-empty, non-numeric string that is not SUS/trust
     for k, v in answers.items():
         if v is None:
             continue
         txt = str(v).strip()
-        if not txt:
+        if not txt or txt.isdigit():
             continue
-        if txt.isdigit():
-            continue
-        lowk = str(k).lower()
-        if lowk.startswith(("sus_", "trust_")):
+        if str(k).lower().startswith(("sus_", "trust_")):
             continue
         if txt.lower() in ("baseline", "ai"):
             continue
         return txt
-
     return ""
 
 
-
-# Database helpers
-
-
 def _read_table_as_df(table: str) -> pd.DataFrame:
-    # Reads a table from SQLite into a DataFrame and returns an empty DF if missing
     conn = get_conn()
     try:
         return pd.read_sql_query(f"SELECT * FROM {table}", conn)
@@ -113,10 +92,8 @@ def _read_table_as_df(table: str) -> pd.DataFrame:
 
 
 def _parse_surveys_df(raw_surveys: pd.DataFrame) -> pd.DataFrame:
-    # Parses surveys.answers_json and computes sus_score, trust_score and comment
     if raw_surveys.empty:
         return raw_surveys
-
     rows = []
     for _, r in raw_surveys.iterrows():
         answers_json = r.get("answers_json", "{}")
@@ -124,17 +101,13 @@ def _parse_surveys_df(raw_surveys: pd.DataFrame) -> pd.DataFrame:
             answers = json.loads(answers_json) if isinstance(answers_json, str) else {}
         except Exception:
             answers = {}
-
-        rows.append(
-            {
-                "participant_id": r.get("participant_id"),
-                "condition": r.get("condition"),
-                "sus_score": _compute_sus_from_answers(answers),
-                "trust_score": _compute_trust_from_answers(answers),
-                "comment": _extract_comment(answers),
-            }
-        )
-
+        rows.append({
+            "participant_id": r.get("participant_id"),
+            "condition": r.get("condition"),
+            "sus_score": _compute_sus_from_answers(answers),
+            "trust_score": _compute_trust_from_answers(answers),
+            "comment": _extract_comment(answers),
+        })
     return pd.DataFrame(rows)
 
 
@@ -187,6 +160,141 @@ def _paired_stats(df: pd.DataFrame, baseline_col: str, ai_col: str) -> Dict[str,
     return result
 
 
+def _accuracy_improvement_groups(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Splits participants into improved / worsened / unchanged groups.
+    Runs independent t-test comparing baseline accuracy between groups.
+    Matches thesis section 4.2: t(52) = 6.31, p < 0.0001.
+    """
+    if df.empty:
+        return {}
+    needed = ["participant_id", "baseline_accuracy", "ai_accuracy"]
+    if not all(c in df.columns for c in needed):
+        return {}
+
+    pair_df = df[needed].dropna().copy()
+    if pair_df.empty:
+        return {}
+
+    pair_df["diff"] = pair_df["ai_accuracy"] - pair_df["baseline_accuracy"]
+    improved = pair_df[pair_df["diff"] > 0]
+    worsened = pair_df[pair_df["diff"] < 0]
+    unchanged = pair_df[pair_df["diff"] == 0]
+
+    result: Dict[str, Any] = {
+        "n_improved": int(len(improved)),
+        "n_worsened": int(len(worsened)),
+        "n_unchanged": int(len(unchanged)),
+        "improved_baseline_mean": float(improved["baseline_accuracy"].mean()) if not improved.empty else None,
+        "improved_baseline_sd": float(improved["baseline_accuracy"].std(ddof=1)) if len(improved) > 1 else None,
+        "worsened_baseline_mean": float(worsened["baseline_accuracy"].mean()) if not worsened.empty else None,
+        "worsened_baseline_sd": float(worsened["baseline_accuracy"].std(ddof=1)) if len(worsened) > 1 else None,
+    }
+
+    if scipy_stats is not None and len(improved) > 1 and len(worsened) > 1:
+        t_stat, p_value = scipy_stats.ttest_ind(
+            improved["baseline_accuracy"].to_numpy(),
+            worsened["baseline_accuracy"].to_numpy(),
+            equal_var=False,
+        )
+        result["group_ttest_t"] = float(t_stat)
+        result["group_ttest_p"] = float(p_value)
+        result["group_ttest_df"] = int(len(improved) + len(worsened) - 2)
+    else:
+        result["group_ttest_t"] = None
+        result["group_ttest_p"] = None
+        result["group_ttest_df"] = None
+
+    # High AI-followed rate among worsened group (thesis: 10 of 15 had rate >= 0.90)
+    if "ai_ai_followed_rate" in df.columns:
+        worsened_ids = worsened["participant_id"].tolist()
+        worsened_follow = df[df["participant_id"].isin(worsened_ids)]["ai_ai_followed_rate"].dropna()
+        if not worsened_follow.empty:
+            result["worsened_high_follow_count"] = int((worsened_follow >= 0.90).sum())
+            result["worsened_follow_mean"] = float(worsened_follow.mean())
+
+    return result
+
+
+def _spearman_trust_vs_ai_followed(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Spearman correlation between trust score and AI-followed rate.
+    Matches thesis: rs = 0.743, p < 0.0001.
+    """
+    if df.empty:
+        return {}
+    needed = ["trust_score", "ai_ai_followed_rate"]
+    if not all(c in df.columns for c in needed):
+        return {}
+
+    pair_df = df[needed].dropna()
+    if len(pair_df) < 3:
+        return {}
+
+    if scipy_stats is not None:
+        rs, p = scipy_stats.spearmanr(
+            pair_df["trust_score"].to_numpy(),
+            pair_df["ai_ai_followed_rate"].to_numpy(),
+        )
+        return {
+            "rs": float(rs),
+            "p_value": float(p),
+            "n": int(len(pair_df)),
+        }
+    return {}
+
+
+def _ai_followed_distribution(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Descriptive statistics for AI-followed rate.
+    Matches thesis: mean = 0.904, SD = 0.12, range 0.583–1.000.
+    """
+    if df.empty or "ai_ai_followed_rate" not in df.columns:
+        return {}
+    vals = df["ai_ai_followed_rate"].dropna().to_numpy()
+    if len(vals) == 0:
+        return {}
+    return {
+        "mean": float(np.mean(vals)),
+        "sd": float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0,
+        "min": float(np.min(vals)),
+        "max": float(np.max(vals)),
+        "median": float(np.median(vals)),
+    }
+
+
+def _ai_confidence_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Mean and SD of AI confidence across all AI-condition decisions.
+    Matches thesis: mean = 0.875, SD = 0.05.
+    """
+    if decisions.empty or "ai_confidence" not in decisions.columns:
+        return {}
+    ai_decisions = decisions[decisions["condition"] == "ai"]["ai_confidence"].dropna()
+    if ai_decisions.empty:
+        return {}
+    return {
+        "mean": float(ai_decisions.mean()),
+        "sd": float(ai_decisions.std(ddof=1)) if len(ai_decisions) > 1 else 0.0,
+    }
+
+
+def _ai_prob_approve_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Mean and SD of AI approval probability across all AI-condition decisions.
+    Matches thesis: mean = 0.502, SD = 0.11.
+    """
+    if decisions.empty or "ai_prob_approve" not in decisions.columns:
+        return {}
+    ai_decisions = decisions[decisions["condition"] == "ai"]["ai_prob_approve"].dropna()
+    if ai_decisions.empty:
+        return {}
+    return {
+        "mean": float(ai_decisions.mean()),
+        "sd": float(ai_decisions.std(ddof=1)) if len(ai_decisions) > 1 else 0.0,
+    }
+
+
 def _participant_level_summary(
     participants: pd.DataFrame,
     decisions: pd.DataFrame,
@@ -198,13 +306,10 @@ def _participant_level_summary(
     participant_df = participants.copy()
     if participant_df.empty:
         participant_ids = set()
-
         if not decisions.empty and "participant_id" in decisions.columns:
             participant_ids.update(str(x) for x in decisions["participant_id"].dropna().tolist())
-
         if not surveys.empty and "participant_id" in surveys.columns:
             participant_ids.update(str(x) for x in surveys["participant_id"].dropna().tolist())
-
         participant_df = pd.DataFrame({"participant_id": sorted(participant_ids)})
 
     if "completed" not in participant_df.columns:
@@ -213,7 +318,6 @@ def _participant_level_summary(
     decision_summary = pd.DataFrame()
     if not decisions.empty:
         agg_map: Dict[str, Tuple[str, str]] = {}
-
         if "correct" in decisions.columns:
             agg_map["accuracy"] = ("correct", "mean")
         if "time_ms" in decisions.columns:
@@ -244,28 +348,15 @@ def _participant_level_summary(
         )
 
     merged = participant_df.copy()
-
     if not decision_summary.empty:
         merged = merged.merge(decision_summary, on="participant_id", how="left")
-
     if not survey_summary.empty:
         merged = merged.merge(survey_summary, on="participant_id", how="left")
 
     return merged.sort_values("participant_id").reset_index(drop=True)
 
 
-
-# Plot helper
-
-
-def _make_bar_plot(
-    labels: List[str],
-    values: List[float],
-    title: str,
-    ylabel: str,
-    out_path: str,
-) -> None:
-    # Creates a simple bar plot and saves it to disk
+def _make_bar_plot(labels, values, title, ylabel, out_path):
     plt.figure()
     plt.bar(labels, values)
     plt.title(title)
@@ -275,14 +366,7 @@ def _make_bar_plot(
     plt.close()
 
 
-def _make_count_plot(
-    labels: List[str],
-    values: List[int],
-    title: str,
-    ylabel: str,
-    out_path: str,
-) -> None:
-    # Creates a simple count plot and saves it to disk
+def _make_count_plot(labels, values, title, ylabel, out_path):
     plt.figure()
     plt.bar(labels, values)
     plt.title(title)
@@ -293,24 +377,49 @@ def _make_count_plot(
     plt.close()
 
 
+def _make_scatter_plot(x, y, title, xlabel, ylabel, out_path, trend_line=False):
+    plt.figure()
+    plt.scatter(x, y, alpha=0.6)
+    if trend_line and len(x) > 1:
+        z = np.polyfit(x, y, 1)
+        p = np.poly1d(z)
+        x_line = np.linspace(min(x), max(x), 100)
+        plt.plot(x_line, p(x_line), "k--", alpha=0.5, linewidth=1)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=160)
+    plt.close()
 
-# Main function (used by Flask)
+
+def _make_scatter_diagonal_plot(baseline, ai, title, out_path):
+    """Participant-level accuracy comparison with diagonal reference line."""
+    plt.figure()
+    plt.scatter(baseline, ai, alpha=0.6)
+    lims = [min(min(baseline), min(ai)) - 0.05, max(max(baseline), max(ai)) + 0.05]
+    plt.plot(lims, lims, "k--", alpha=0.4, linewidth=1)
+    plt.xlabel("Baseline accuracy")
+    plt.ylabel("AI-assisted accuracy")
+    plt.title(title)
+    plt.xlim(lims)
+    plt.ylim(lims)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=160)
+    plt.close()
 
 
 def generate_results(static_root: str) -> Dict[str, Any]:
-    # Reads study tables from the database
     participants = _read_table_as_df("participants")
     decisions = _read_table_as_df("decisions")
     events = _read_table_as_df("events")
     surveys_raw = _read_table_as_df("surveys")
     surveys = _parse_surveys_df(surveys_raw)
 
-    # Ensures the output folder exists
     results_dir = os.path.join(static_root, RESULTS_DIRNAME)
     os.makedirs(results_dir, exist_ok=True)
     os.makedirs(os.path.dirname(PARTICIPANT_SUMMARY_PATH), exist_ok=True)
 
-    # Returns early if there is no data yet
     if decisions.empty and surveys_raw.empty and participants.empty:
         return {
             "has_data": False,
@@ -319,18 +428,9 @@ def generate_results(static_root: str) -> Dict[str, Any]:
             "plots": {},
         }
 
-    # Converts selected decision columns to numeric when present
     if not decisions.empty:
-        for col in [
-            "correct",
-            "time_ms",
-            "ai_followed",
-            "ai_seen",
-            "explanation_opened",
-            "ground_truth",
-            "ai_confidence",
-            "ai_prob_approve",
-        ]:
+        for col in ["correct", "time_ms", "ai_followed", "ai_seen", "explanation_opened",
+                    "ground_truth", "ai_confidence", "ai_prob_approve"]:
             if col in decisions.columns:
                 decisions[col] = pd.to_numeric(decisions[col], errors="coerce")
 
@@ -353,172 +453,160 @@ def generate_results(static_root: str) -> Dict[str, Any]:
     ai_seen_by_cond: Dict[str, float] = {}
 
     if not participant_summary.empty:
-        if "baseline_accuracy" in participant_summary.columns and participant_summary["baseline_accuracy"].notna().any():
-            acc_by_cond["baseline"] = float(participant_summary["baseline_accuracy"].mean())
-        if "ai_accuracy" in participant_summary.columns and participant_summary["ai_accuracy"].notna().any():
-            acc_by_cond["ai"] = float(participant_summary["ai_accuracy"].mean())
+        for col, d in [
+            ("baseline_accuracy", acc_by_cond), ("ai_accuracy", acc_by_cond),
+            ("baseline_avg_time_seconds", time_by_cond), ("ai_avg_time_seconds", time_by_cond),
+            ("ai_ai_followed_rate", follow_by_cond),
+            ("trust_score", trust_by_cond), ("sus_score", sus_by_cond),
+            ("ai_avg_ai_confidence", ai_confidence_by_cond),
+            ("ai_avg_ai_prob_approve", ai_prob_approve_by_cond),
+            ("ai_explanation_open_rate", explanation_open_by_cond),
+            ("baseline_explanation_open_rate", explanation_open_by_cond),
+            ("ai_ai_seen_rate", ai_seen_by_cond),
+            ("baseline_ai_seen_rate", ai_seen_by_cond),
+        ]:
+            if col in participant_summary.columns and participant_summary[col].notna().any():
+                cond = col.split("_")[0]
+                metric = col[len(cond)+1:]
+                if col == "trust_score": d["ai"] = float(participant_summary[col].mean())
+                elif col == "sus_score": d["ai"] = float(participant_summary[col].mean())
+                elif col == "ai_ai_followed_rate": d["ai"] = float(participant_summary[col].mean())
+                elif col == "ai_avg_ai_confidence": d["ai"] = float(participant_summary[col].mean())
+                elif col == "ai_avg_ai_prob_approve": d["ai"] = float(participant_summary[col].mean())
+                elif col == "ai_explanation_open_rate": d["ai"] = float(participant_summary[col].mean())
+                elif col == "baseline_explanation_open_rate": d["baseline"] = float(participant_summary[col].mean())
+                elif col == "ai_ai_seen_rate": d["ai"] = float(participant_summary[col].mean())
+                elif col == "baseline_ai_seen_rate": d["baseline"] = float(participant_summary[col].mean())
+                elif col == "baseline_accuracy": d["baseline"] = float(participant_summary[col].mean())
+                elif col == "ai_accuracy": d["ai"] = float(participant_summary[col].mean())
+                elif col == "baseline_avg_time_seconds": d["baseline"] = float(participant_summary[col].mean())
+                elif col == "ai_avg_time_seconds": d["ai"] = float(participant_summary[col].mean())
 
-        if "baseline_avg_time_seconds" in participant_summary.columns and participant_summary["baseline_avg_time_seconds"].notna().any():
-            time_by_cond["baseline"] = float(participant_summary["baseline_avg_time_seconds"].mean())
-        if "ai_avg_time_seconds" in participant_summary.columns and participant_summary["ai_avg_time_seconds"].notna().any():
-            time_by_cond["ai"] = float(participant_summary["ai_avg_time_seconds"].mean())
+    # Extended statistics matching thesis results chapter
+    accuracy_groups = _accuracy_improvement_groups(participant_summary)
+    spearman_trust_followed = _spearman_trust_vs_ai_followed(participant_summary)
+    ai_followed_dist = _ai_followed_distribution(participant_summary)
+    ai_confidence_detail = _ai_confidence_stats(decisions)
+    ai_prob_detail = _ai_prob_approve_stats(decisions)
 
-        if "ai_ai_followed_rate" in participant_summary.columns and participant_summary["ai_ai_followed_rate"].notna().any():
-            follow_by_cond["ai"] = float(participant_summary["ai_ai_followed_rate"].mean())
-
-        if "trust_score" in participant_summary.columns and participant_summary["trust_score"].notna().any():
-            trust_by_cond["ai"] = float(participant_summary["trust_score"].mean())
-
-        if "sus_score" in participant_summary.columns and participant_summary["sus_score"].notna().any():
-            sus_by_cond["ai"] = float(participant_summary["sus_score"].mean())
-
-        if "ai_avg_ai_confidence" in participant_summary.columns and participant_summary["ai_avg_ai_confidence"].notna().any():
-            ai_confidence_by_cond["ai"] = float(participant_summary["ai_avg_ai_confidence"].mean())
-
-        if "ai_avg_ai_prob_approve" in participant_summary.columns and participant_summary["ai_avg_ai_prob_approve"].notna().any():
-            ai_prob_approve_by_cond["ai"] = float(participant_summary["ai_avg_ai_prob_approve"].mean())
-
-        if "ai_explanation_open_rate" in participant_summary.columns and participant_summary["ai_explanation_open_rate"].notna().any():
-            explanation_open_by_cond["ai"] = float(participant_summary["ai_explanation_open_rate"].mean())
-        if "baseline_explanation_open_rate" in participant_summary.columns and participant_summary["baseline_explanation_open_rate"].notna().any():
-            explanation_open_by_cond["baseline"] = float(participant_summary["baseline_explanation_open_rate"].mean())
-
-        if "ai_ai_seen_rate" in participant_summary.columns and participant_summary["ai_ai_seen_rate"].notna().any():
-            ai_seen_by_cond["ai"] = float(participant_summary["ai_ai_seen_rate"].mean())
-        if "baseline_ai_seen_rate" in participant_summary.columns and participant_summary["baseline_ai_seen_rate"].notna().any():
-            ai_seen_by_cond["baseline"] = float(participant_summary["baseline_ai_seen_rate"].mean())
-
-    # Collects free-text comments for display on the results page
     comments: List[Dict[str, str]] = []
-    if isinstance(participant_summary, pd.DataFrame) and (not participant_summary.empty) and "comment" in participant_summary.columns:
+    if not participant_summary.empty and "comment" in participant_summary.columns:
         for _, row in participant_summary.iterrows():
             c = str(row.get("comment", "")).strip()
             if c:
-                comments.append(
-                    {
-                        "participant_id": str(row.get("participant_id", "")).strip(),
-                        "condition": "ai",
-                        "comment": c,
-                    }
-                )
+                comments.append({
+                    "participant_id": str(row.get("participant_id", "")).strip(),
+                    "condition": "ai",
+                    "comment": c,
+                })
 
-    # Defines how conditions should be ordered in plots
     cond_order = ["baseline", "ai"]
 
-    def ordered_values(d: Dict[str, float]) -> Tuple[List[str], List[float]]:
-        # Returns labels/values in a consistent order
+    def ordered_values(d):
         labels = [c for c in cond_order if c in d]
-        vals = [d[c] for c in labels]
-        return labels, vals
+        return labels, [d[c] for c in labels]
 
     plots: Dict[str, str] = {}
 
-    # Creates accuracy plot
     if acc_by_cond:
         labels, vals = ordered_values(acc_by_cond)
         out = os.path.join(results_dir, "accuracy.png")
-        _make_bar_plot(labels, vals, "Accuracy by condition", "Accuracy (0–1)", out)
+        _make_bar_plot(labels, vals, "Mean decision accuracy by condition", "Accuracy (0–1)", out)
         plots["accuracy"] = f"/static/{RESULTS_DIRNAME}/accuracy.png"
 
-    # Creates time plot
+    # Participant-level accuracy scatter with diagonal (thesis fig 4.2)
+    if not participant_summary.empty:
+        if "baseline_accuracy" in participant_summary.columns and "ai_accuracy" in participant_summary.columns:
+            pair_df = participant_summary[["baseline_accuracy", "ai_accuracy"]].dropna()
+            if len(pair_df) >= 2:
+                out = os.path.join(results_dir, "accuracy_scatter.png")
+                _make_scatter_diagonal_plot(
+                    pair_df["baseline_accuracy"].tolist(),
+                    pair_df["ai_accuracy"].tolist(),
+                    "Participant-level accuracy: baseline vs AI-assisted",
+                    out,
+                )
+                plots["accuracy_scatter"] = f"/static/{RESULTS_DIRNAME}/accuracy_scatter.png"
+
     if time_by_cond:
         labels, vals = ordered_values(time_by_cond)
         out = os.path.join(results_dir, "time.png")
-        _make_bar_plot(labels, vals, "Average decision time by condition", "Seconds", out)
+        _make_bar_plot(labels, vals, "Mean decision time by condition", "Seconds", out)
         plots["time"] = f"/static/{RESULTS_DIRNAME}/time.png"
 
-    # Creates trust plot
-    if trust_by_cond:
-        labels, vals = ordered_values(trust_by_cond)
-        out = os.path.join(results_dir, "trust.png")
-        _make_bar_plot(labels, vals, "Trust score by condition", "Average (1–5)", out)
-        plots["trust"] = f"/static/{RESULTS_DIRNAME}/trust.png"
-
-    # Creates SUS plot
-    if sus_by_cond:
-        labels, vals = ordered_values(sus_by_cond)
-        out = os.path.join(results_dir, "sus.png")
-        _make_bar_plot(labels, vals, "SUS score by condition", "SUS (0–100)", out)
-        plots["sus"] = f"/static/{RESULTS_DIRNAME}/sus.png"
-
-    # Creates AI-followed plot
     if follow_by_cond:
         labels, vals = ordered_values(follow_by_cond)
         out = os.path.join(results_dir, "ai_followed.png")
-        _make_bar_plot(labels, vals, "AI-followed rate (AI condition)", "Rate (0–1)", out)
+        _make_bar_plot(labels, vals, "Mean AI-followed rate (AI condition)", "Rate (0–1)", out)
         plots["ai_followed"] = f"/static/{RESULTS_DIRNAME}/ai_followed.png"
 
-    # Creates AI confidence plot
+    if trust_by_cond:
+        labels, vals = ordered_values(trust_by_cond)
+        out = os.path.join(results_dir, "trust.png")
+        _make_bar_plot(labels, vals, "Mean trust score (AI condition)", "Score (1–5)", out)
+        plots["trust"] = f"/static/{RESULTS_DIRNAME}/trust.png"
+
+    # Trust vs AI-followed scatter (thesis fig 4.9)
+    if not participant_summary.empty:
+        needed = ["trust_score", "ai_ai_followed_rate"]
+        if all(c in participant_summary.columns for c in needed):
+            scatter_df = participant_summary[needed].dropna()
+            if len(scatter_df) >= 3:
+                out = os.path.join(results_dir, "trust_vs_ai_followed.png")
+                _make_scatter_plot(
+                    scatter_df["trust_score"].tolist(),
+                    scatter_df["ai_ai_followed_rate"].tolist(),
+                    "Trust score vs AI-followed rate",
+                    "Trust score (1–5)",
+                    "AI-followed rate (0–1)",
+                    out,
+                    trend_line=True,
+                )
+                plots["trust_vs_ai_followed"] = f"/static/{RESULTS_DIRNAME}/trust_vs_ai_followed.png"
+
+    if sus_by_cond:
+        labels, vals = ordered_values(sus_by_cond)
+        out = os.path.join(results_dir, "sus.png")
+        _make_bar_plot(labels, vals, "Mean SUS score (AI condition)", "SUS (0–100)", out)
+        plots["sus"] = f"/static/{RESULTS_DIRNAME}/sus.png"
+
     if ai_confidence_by_cond:
         labels, vals = ordered_values(ai_confidence_by_cond)
         out = os.path.join(results_dir, "ai_confidence.png")
-        _make_bar_plot(labels, vals, "Average AI confidence", "Confidence (0–1)", out)
+        _make_bar_plot(labels, vals, "Mean AI confidence score", "Confidence (0–1)", out)
         plots["ai_confidence"] = f"/static/{RESULTS_DIRNAME}/ai_confidence.png"
 
-    # Creates AI probability plot
     if ai_prob_approve_by_cond:
         labels, vals = ordered_values(ai_prob_approve_by_cond)
         out = os.path.join(results_dir, "ai_prob_approve.png")
-        _make_bar_plot(labels, vals, "Average AI approval probability", "Probability (0–1)", out)
+        _make_bar_plot(labels, vals, "Mean AI approval probability", "Probability (0–1)", out)
         plots["ai_prob_approve"] = f"/static/{RESULTS_DIRNAME}/ai_prob_approve.png"
 
-    # Creates explanation-open plot
     if explanation_open_by_cond:
         labels, vals = ordered_values(explanation_open_by_cond)
         out = os.path.join(results_dir, "explanation_open_rate.png")
-        _make_bar_plot(labels, vals, "Explanation open rate by condition", "Rate (0–1)", out)
+        _make_bar_plot(labels, vals, "Mean explanation open rate by condition", "Rate (0–1)", out)
         plots["explanation_open_rate"] = f"/static/{RESULTS_DIRNAME}/explanation_open_rate.png"
 
-    # Creates AI-seen plot
-    if ai_seen_by_cond:
-        labels, vals = ordered_values(ai_seen_by_cond)
-        out = os.path.join(results_dir, "ai_seen_rate.png")
-        _make_bar_plot(labels, vals, "AI seen rate by condition", "Rate (0–1)", out)
-        plots["ai_seen_rate"] = f"/static/{RESULTS_DIRNAME}/ai_seen_rate.png"
-
-    # Creates age-group distribution plot
-    if not participants.empty and "age_group" in participants.columns:
-        counts = participants["age_group"].fillna("").astype(str).str.strip()
-        counts = counts[counts != ""].value_counts()
-        if not counts.empty:
-            out = os.path.join(results_dir, "age_group_distribution.png")
-            _make_count_plot(counts.index.tolist(), counts.astype(int).tolist(), "Participant age group distribution", "Count", out)
-            plots["age_group_distribution"] = f"/static/{RESULTS_DIRNAME}/age_group_distribution.png"
-
-    # Creates background distribution plot
-    if not participants.empty and "background" in participants.columns:
-        counts = participants["background"].fillna("").astype(str).str.strip()
-        counts = counts[counts != ""].value_counts()
-        if not counts.empty:
-            out = os.path.join(results_dir, "background_distribution.png")
-            _make_count_plot(counts.index.tolist(), counts.astype(int).tolist(), "Participant background distribution", "Count", out)
-            plots["background_distribution"] = f"/static/{RESULTS_DIRNAME}/background_distribution.png"
-
-    # Creates AI familiarity distribution plot
-    if not participants.empty and "ai_familiarity" in participants.columns:
-        counts = participants["ai_familiarity"].fillna("").astype(str).str.strip()
-        counts = counts[counts != ""].value_counts()
-        if not counts.empty:
-            out = os.path.join(results_dir, "ai_familiarity_distribution.png")
-            _make_count_plot(counts.index.tolist(), counts.astype(int).tolist(), "AI familiarity distribution", "Count", out)
-            plots["ai_familiarity_distribution"] = f"/static/{RESULTS_DIRNAME}/ai_familiarity_distribution.png"
-
-    # Creates finance familiarity distribution plot
-    if not participants.empty and "finance_familiarity" in participants.columns:
-        counts = participants["finance_familiarity"].fillna("").astype(str).str.strip()
-        counts = counts[counts != ""].value_counts()
-        if not counts.empty:
-            out = os.path.join(results_dir, "finance_familiarity_distribution.png")
-            _make_count_plot(counts.index.tolist(), counts.astype(int).tolist(), "Finance familiarity distribution", "Count", out)
-            plots["finance_familiarity_distribution"] = f"/static/{RESULTS_DIRNAME}/finance_familiarity_distribution.png"
+    for col, title, fname in [
+        ("age_group", "Age group distribution", "age_group_distribution"),
+        ("background", "Background distribution", "background_distribution"),
+        ("ai_familiarity", "AI familiarity distribution", "ai_familiarity_distribution"),
+        ("finance_familiarity", "Finance familiarity distribution", "finance_familiarity_distribution"),
+    ]:
+        if not participants.empty and col in participants.columns:
+            counts = participants[col].fillna("").astype(str).str.strip()
+            counts = counts[counts != ""].value_counts()
+            if not counts.empty:
+                out = os.path.join(results_dir, f"{fname}.png")
+                _make_count_plot(counts.index.tolist(), counts.astype(int).tolist(), title, "Count", out)
+                plots[fname] = f"/static/{RESULTS_DIRNAME}/{fname}.png"
 
     paired_tests = {}
     if not participant_summary.empty:
         paired_tests["accuracy"] = _paired_stats(participant_summary, "baseline_accuracy", "ai_accuracy")
         paired_tests["decision_time_seconds"] = _paired_stats(
-            participant_summary,
-            "baseline_avg_time_seconds",
-            "ai_avg_time_seconds",
+            participant_summary, "baseline_avg_time_seconds", "ai_avg_time_seconds"
         )
 
     participant_summary_preview: List[Dict[str, Any]] = []
@@ -540,6 +628,12 @@ def generate_results(static_root: str) -> Dict[str, Any]:
         "explanation_open_rate_by_condition": explanation_open_by_cond,
         "ai_seen_rate_by_condition": ai_seen_by_cond,
         "paired_tests": paired_tests,
+        # Extended stats matching thesis results
+        "accuracy_improvement_groups": accuracy_groups,
+        "spearman_trust_vs_ai_followed": spearman_trust_followed,
+        "ai_followed_distribution": ai_followed_dist,
+        "ai_confidence_detail": ai_confidence_detail,
+        "ai_prob_approve_detail": ai_prob_detail,
         "comments": comments,
         "participant_summary_preview": participant_summary_preview,
         "n_participants": int(len(participants)) if not participants.empty else 0,
