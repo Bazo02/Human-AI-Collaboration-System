@@ -13,7 +13,7 @@ The system measures:
 
 * Decision accuracy
 * Decision time
-* Trust in AI
+* Trust in AIA
 * Perceived usability
 * AI reliance behavior
 
@@ -65,13 +65,14 @@ Run the following commands from the project root directory:
 python -m venv venv
 
 venv\Scripts\activate   # Windows
-# source venv/bin/activate  # Mac/Linux
+source venv/bin/activate  # Mac/Linux
 
 pip install -r requirements.txt
 
 python -m app.data_prep
 python -m app.model_train
 python -m app.main
+
 ```
 
 Then open:

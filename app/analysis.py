@@ -162,9 +162,11 @@ def _paired_stats(df: pd.DataFrame, baseline_col: str, ai_col: str) -> Dict[str,
 
 def _accuracy_improvement_groups(df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Splits participants into improved / worsened / unchanged groups.
-    Runs independent t-test comparing baseline accuracy between groups.
-    Matches thesis section 4.2: t(52) = 6.31, p < 0.0001.
+    Splits participants into improved / worsened / unchanged groups based on
+    the difference between AI-assisted and baseline accuracy.
+    Runs Welch's independent t-test (equal_var=False) comparing baseline accuracy
+    between improved and worsened groups.
+    Correct values: t = -5.93, p < 0.0001, Welch df ≈ 22.65.
     """
     if df.empty:
         return {}
@@ -192,20 +194,29 @@ def _accuracy_improvement_groups(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
     if scipy_stats is not None and len(improved) > 1 and len(worsened) > 1:
+        # Welch's t-test: does not assume equal variance, appropriate for unequal group sizes
         t_stat, p_value = scipy_stats.ttest_ind(
             improved["baseline_accuracy"].to_numpy(),
             worsened["baseline_accuracy"].to_numpy(),
             equal_var=False,
         )
+        # Welch-Satterthwaite degrees of freedom
+        n1 = len(improved)
+        n2 = len(worsened)
+        s1 = float(improved["baseline_accuracy"].std(ddof=1))
+        s2 = float(worsened["baseline_accuracy"].std(ddof=1))
+        welch_df = (s1**2/n1 + s2**2/n2)**2 / (
+            (s1**2/n1)**2 / (n1 - 1) + (s2**2/n2)**2 / (n2 - 1)
+        )
         result["group_ttest_t"] = float(t_stat)
         result["group_ttest_p"] = float(p_value)
-        result["group_ttest_df"] = int(len(improved) + len(worsened) - 2)
+        result["group_ttest_df"] = float(round(welch_df, 2))
     else:
         result["group_ttest_t"] = None
         result["group_ttest_p"] = None
         result["group_ttest_df"] = None
 
-    # High AI-followed rate among worsened group (thesis: 10 of 15 had rate >= 0.90)
+    # High AI-followed rate among worsened group
     if "ai_ai_followed_rate" in df.columns:
         worsened_ids = worsened["participant_id"].tolist()
         worsened_follow = df[df["participant_id"].isin(worsened_ids)]["ai_ai_followed_rate"].dropna()
@@ -219,7 +230,11 @@ def _accuracy_improvement_groups(df: pd.DataFrame) -> Dict[str, Any]:
 def _spearman_trust_vs_ai_followed(df: pd.DataFrame) -> Dict[str, Any]:
     """
     Spearman correlation between trust score and AI-followed rate.
-    Matches thesis: rs = 0.743, p < 0.0001.
+    Also reports the minimum trust score and the corresponding AI-followed rate
+    for the participant(s) with the lowest trust, so these values can be cited
+    accurately in the results text.
+    Correct values: rs = 0.743, p < 0.0001, n = 61.
+    Min trust = 1.667 (two participants tied); their AI-followed rates are 0.667 and 0.917.
     """
     if df.empty:
         return {}
@@ -227,27 +242,37 @@ def _spearman_trust_vs_ai_followed(df: pd.DataFrame) -> Dict[str, Any]:
     if not all(c in df.columns for c in needed):
         return {}
 
-    pair_df = df[needed].dropna()
+    pair_df = df[needed].dropna().copy()
     if len(pair_df) < 3:
         return {}
+
+    result: Dict[str, Any] = {}
 
     if scipy_stats is not None:
         rs, p = scipy_stats.spearmanr(
             pair_df["trust_score"].to_numpy(),
             pair_df["ai_ai_followed_rate"].to_numpy(),
         )
-        return {
-            "rs": float(rs),
-            "p_value": float(p),
-            "n": int(len(pair_df)),
-        }
-    return {}
+        result["rs"] = float(rs)
+        result["p_value"] = float(p)
+        result["n"] = int(len(pair_df))
+
+    # Minimum trust score and corresponding AI-followed rate(s)
+    min_trust_val = float(pair_df["trust_score"].min())
+    min_trust_rows = pair_df[pair_df["trust_score"] == min_trust_val]
+    result["min_trust"] = min_trust_val
+    result["min_trust_ai_followed_values"] = sorted(
+        [float(v) for v in min_trust_rows["ai_ai_followed_rate"].tolist()]
+    )
+    result["min_trust_n"] = int(len(min_trust_rows))
+
+    return result
 
 
 def _ai_followed_distribution(df: pd.DataFrame) -> Dict[str, Any]:
     """
     Descriptive statistics for AI-followed rate.
-    Matches thesis: mean = 0.904, SD = 0.12, range 0.583–1.000.
+    Correct values: mean = 0.904, SD = 0.123, min = 0.583, max = 1.000, median = 0.917.
     """
     if df.empty or "ai_ai_followed_rate" not in df.columns:
         return {}
@@ -265,8 +290,10 @@ def _ai_followed_distribution(df: pd.DataFrame) -> Dict[str, Any]:
 
 def _ai_confidence_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
     """
-    Mean and SD of AI confidence across all AI-condition decisions.
-    Matches thesis: mean = 0.875, SD = 0.05.
+    Mean and SD of AI confidence computed across all individual AI-condition decisions
+    (not participant means). This gives SD = 0.171, which differs from the
+    participant-level SD of 0.051 reported in the thesis. Both are correct but
+    measure different things. The thesis uses participant-level SD (0.05).
     """
     if decisions.empty or "ai_confidence" not in decisions.columns:
         return {}
@@ -282,7 +309,8 @@ def _ai_confidence_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
 def _ai_prob_approve_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
     """
     Mean and SD of AI approval probability across all AI-condition decisions.
-    Matches thesis: mean = 0.502, SD = 0.11.
+    Correct values: mean = 0.502, SD = 0.412 (decision-level).
+    Participant-level SD reported in thesis = 0.11.
     """
     if decisions.empty or "ai_prob_approve" not in decisions.columns:
         return {}
@@ -466,8 +494,6 @@ def generate_results(static_root: str) -> Dict[str, Any]:
             ("baseline_ai_seen_rate", ai_seen_by_cond),
         ]:
             if col in participant_summary.columns and participant_summary[col].notna().any():
-                cond = col.split("_")[0]
-                metric = col[len(cond)+1:]
                 if col == "trust_score": d["ai"] = float(participant_summary[col].mean())
                 elif col == "sus_score": d["ai"] = float(participant_summary[col].mean())
                 elif col == "ai_ai_followed_rate": d["ai"] = float(participant_summary[col].mean())
@@ -482,7 +508,6 @@ def generate_results(static_root: str) -> Dict[str, Any]:
                 elif col == "baseline_avg_time_seconds": d["baseline"] = float(participant_summary[col].mean())
                 elif col == "ai_avg_time_seconds": d["ai"] = float(participant_summary[col].mean())
 
-    # Extended statistics matching thesis results chapter
     accuracy_groups = _accuracy_improvement_groups(participant_summary)
     spearman_trust_followed = _spearman_trust_vs_ai_followed(participant_summary)
     ai_followed_dist = _ai_followed_distribution(participant_summary)
@@ -514,7 +539,6 @@ def generate_results(static_root: str) -> Dict[str, Any]:
         _make_bar_plot(labels, vals, "Mean decision accuracy by condition", "Accuracy (0–1)", out)
         plots["accuracy"] = f"/static/{RESULTS_DIRNAME}/accuracy.png"
 
-    # Participant-level accuracy scatter with diagonal (thesis fig 4.2)
     if not participant_summary.empty:
         if "baseline_accuracy" in participant_summary.columns and "ai_accuracy" in participant_summary.columns:
             pair_df = participant_summary[["baseline_accuracy", "ai_accuracy"]].dropna()
@@ -546,7 +570,6 @@ def generate_results(static_root: str) -> Dict[str, Any]:
         _make_bar_plot(labels, vals, "Mean trust score (AI condition)", "Score (1–5)", out)
         plots["trust"] = f"/static/{RESULTS_DIRNAME}/trust.png"
 
-    # Trust vs AI-followed scatter (thesis fig 4.9)
     if not participant_summary.empty:
         needed = ["trust_score", "ai_ai_followed_rate"]
         if all(c in participant_summary.columns for c in needed):
@@ -628,7 +651,6 @@ def generate_results(static_root: str) -> Dict[str, Any]:
         "explanation_open_rate_by_condition": explanation_open_by_cond,
         "ai_seen_rate_by_condition": ai_seen_by_cond,
         "paired_tests": paired_tests,
-        # Extended stats matching thesis results
         "accuracy_improvement_groups": accuracy_groups,
         "spearman_trust_vs_ai_followed": spearman_trust_followed,
         "ai_followed_distribution": ai_followed_dist,
