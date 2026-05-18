@@ -1,4 +1,4 @@
-# app/analysis.py
+# app/analysis.py: analyzes study data from the database and generates graphs and statistics.
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -24,14 +25,14 @@ except Exception:
 
 RESULTS_DIRNAME = "results"
 
-
+# Helper function for converting values to integers
 def _to_int(x) -> Optional[int]:
     try:
         return int(x)
     except Exception:
         return None
 
-
+# Computes the SUS score from the answers to the 10 SUS questions
 def _compute_sus_from_answers(answers: Dict[str, Any]) -> Optional[float]:
     scores: List[int] = []
     for i in range(1, 11):
@@ -45,7 +46,7 @@ def _compute_sus_from_answers(answers: Dict[str, Any]) -> Optional[float]:
             scores.append(5 - v)
     return float(sum(scores) * 2.5)
 
-
+# Computes the average of the three trust questions to get an overall trust score
 def _compute_trust_from_answers(answers: Dict[str, Any]) -> Optional[float]:
     vals = []
     for k in ["trust_q1", "trust_q2", "trust_q3"]:
@@ -55,7 +56,7 @@ def _compute_trust_from_answers(answers: Dict[str, Any]) -> Optional[float]:
         vals.append(v)
     return float(sum(vals) / len(vals))
 
-
+# Extracts the free-text comment from the survey answers
 def _extract_comment(answers: Dict[str, Any]) -> str:
     candidate_keys = [
         "comment", "comments", "feedback", "message",
@@ -80,7 +81,7 @@ def _extract_comment(answers: Dict[str, Any]) -> str:
         return txt
     return ""
 
-
+# Reads a table from the database into a pandas DataFrame
 def _read_table_as_df(table: str) -> pd.DataFrame:
     conn = get_conn()
     try:
@@ -90,7 +91,7 @@ def _read_table_as_df(table: str) -> pd.DataFrame:
     finally:
         conn.close()
 
-
+# Parses the raw surveys DataFrame, extracting trust scores, SUS scores, and comments into a cleaner format
 def _parse_surveys_df(raw_surveys: pd.DataFrame) -> pd.DataFrame:
     if raw_surveys.empty:
         return raw_surveys
@@ -110,7 +111,7 @@ def _parse_surveys_df(raw_surveys: pd.DataFrame) -> pd.DataFrame:
         })
     return pd.DataFrame(rows)
 
-
+# Calculates paired statistics (t-test) between baseline and AI conditions for a given metric
 def _paired_stats(df: pd.DataFrame, baseline_col: str, ai_col: str) -> Dict[str, Any]:
     if df.empty or baseline_col not in df.columns or ai_col not in df.columns:
         return {}
@@ -133,11 +134,13 @@ def _paired_stats(df: pd.DataFrame, baseline_col: str, ai_col: str) -> Dict[str,
         "sd_difference": float(np.std(diff, ddof=1)) if len(diff) > 1 else 0.0,
     }
 
+    # calculates Cohen's dz for paired samples (mean of differences divided by SD of differences)
     if len(diff) > 1 and np.std(diff, ddof=1) > 0:
         result["cohens_dz"] = float(np.mean(diff) / np.std(diff, ddof=1))
     else:
         result["cohens_dz"] = 0.0
 
+    # runs a paired t-test with 95% confidence interval for the mean difference
     if scipy_stats is not None and len(diff) > 1:
         t_stat, p_value = scipy_stats.ttest_rel(ai, baseline, nan_policy="omit")
         sem = scipy_stats.sem(diff, nan_policy="omit")
@@ -159,15 +162,8 @@ def _paired_stats(df: pd.DataFrame, baseline_col: str, ai_col: str) -> Dict[str,
 
     return result
 
-
+# Divides participants into groups based on whether their accuracy improved or worsened with AI, and runs Welch's t-test between the two groups
 def _accuracy_improvement_groups(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Splits participants into improved / worsened / unchanged groups based on
-    the difference between AI-assisted and baseline accuracy.
-    Runs Welch's independent t-test (equal_var=False) comparing baseline accuracy
-    between improved and worsened groups.
-    Correct values: t = -5.93, p < 0.0001, Welch df ≈ 22.65.
-    """
     if df.empty:
         return {}
     needed = ["participant_id", "baseline_accuracy", "ai_accuracy"]
@@ -194,13 +190,11 @@ def _accuracy_improvement_groups(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
     if scipy_stats is not None and len(improved) > 1 and len(worsened) > 1:
-        # Welch's t-test: does not assume equal variance, appropriate for unequal group sizes
         t_stat, p_value = scipy_stats.ttest_ind(
             improved["baseline_accuracy"].to_numpy(),
             worsened["baseline_accuracy"].to_numpy(),
             equal_var=False,
         )
-        # Welch-Satterthwaite degrees of freedom
         n1 = len(improved)
         n2 = len(worsened)
         s1 = float(improved["baseline_accuracy"].std(ddof=1))
@@ -216,7 +210,7 @@ def _accuracy_improvement_groups(df: pd.DataFrame) -> Dict[str, Any]:
         result["group_ttest_p"] = None
         result["group_ttest_df"] = None
 
-    # High AI-followed rate among worsened group
+    # checks if worsened participants had high AI follow rates
     if "ai_ai_followed_rate" in df.columns:
         worsened_ids = worsened["participant_id"].tolist()
         worsened_follow = df[df["participant_id"].isin(worsened_ids)]["ai_ai_followed_rate"].dropna()
@@ -226,16 +220,8 @@ def _accuracy_improvement_groups(df: pd.DataFrame) -> Dict[str, Any]:
 
     return result
 
-
+# Computes Spearman correlation between trust score and AI-followed rate, and reports the minimum trust value
 def _spearman_trust_vs_ai_followed(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Spearman correlation between trust score and AI-followed rate.
-    Also reports the minimum trust score and the corresponding AI-followed rate
-    for the participant(s) with the lowest trust, so these values can be cited
-    accurately in the results text.
-    Correct values: rs = 0.743, p < 0.0001, n = 61.
-    Min trust = 1.667 (two participants tied); their AI-followed rates are 0.667 and 0.917.
-    """
     if df.empty:
         return {}
     needed = ["trust_score", "ai_ai_followed_rate"]
@@ -257,7 +243,6 @@ def _spearman_trust_vs_ai_followed(df: pd.DataFrame) -> Dict[str, Any]:
         result["p_value"] = float(p)
         result["n"] = int(len(pair_df))
 
-    # Minimum trust score and corresponding AI-followed rate(s)
     min_trust_val = float(pair_df["trust_score"].min())
     min_trust_rows = pair_df[pair_df["trust_score"] == min_trust_val]
     result["min_trust"] = min_trust_val
@@ -268,12 +253,8 @@ def _spearman_trust_vs_ai_followed(df: pd.DataFrame) -> Dict[str, Any]:
 
     return result
 
-
+# Returns descriptive statistics for the AI-followed rate across participants
 def _ai_followed_distribution(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Descriptive statistics for AI-followed rate.
-    Correct values: mean = 0.904, SD = 0.123, min = 0.583, max = 1.000, median = 0.917.
-    """
     if df.empty or "ai_ai_followed_rate" not in df.columns:
         return {}
     vals = df["ai_ai_followed_rate"].dropna().to_numpy()
@@ -287,14 +268,8 @@ def _ai_followed_distribution(df: pd.DataFrame) -> Dict[str, Any]:
         "median": float(np.median(vals)),
     }
 
-
+# Returns mean and SD of AI confidence scores across all AI-condition decisions
 def _ai_confidence_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Mean and SD of AI confidence computed across all individual AI-condition decisions
-    (not participant means). This gives SD = 0.171, which differs from the
-    participant-level SD of 0.051 reported in the thesis. Both are correct but
-    measure different things. The thesis uses participant-level SD (0.05).
-    """
     if decisions.empty or "ai_confidence" not in decisions.columns:
         return {}
     ai_decisions = decisions[decisions["condition"] == "ai"]["ai_confidence"].dropna()
@@ -305,13 +280,8 @@ def _ai_confidence_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
         "sd": float(ai_decisions.std(ddof=1)) if len(ai_decisions) > 1 else 0.0,
     }
 
-
+# Returns mean and SD of AI approval probability across all AI-condition decisions
 def _ai_prob_approve_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Mean and SD of AI approval probability across all AI-condition decisions.
-    Correct values: mean = 0.502, SD = 0.412 (decision-level).
-    Participant-level SD reported in thesis = 0.11.
-    """
     if decisions.empty or "ai_prob_approve" not in decisions.columns:
         return {}
     ai_decisions = decisions[decisions["condition"] == "ai"]["ai_prob_approve"].dropna()
@@ -322,7 +292,7 @@ def _ai_prob_approve_stats(decisions: pd.DataFrame) -> Dict[str, Any]:
         "sd": float(ai_decisions.std(ddof=1)) if len(ai_decisions) > 1 else 0.0,
     }
 
-
+# Builds a summary DataFrame with one row per participant, merging decisions, surveys, and participant info
 def _participant_level_summary(
     participants: pd.DataFrame,
     decisions: pd.DataFrame,
@@ -383,7 +353,7 @@ def _participant_level_summary(
 
     return merged.sort_values("participant_id").reset_index(drop=True)
 
-
+# Creates a simple bar chart and saves it to disk
 def _make_bar_plot(labels, values, title, ylabel, out_path):
     plt.figure()
     plt.bar(labels, values)
@@ -393,7 +363,7 @@ def _make_bar_plot(labels, values, title, ylabel, out_path):
     plt.savefig(out_path, dpi=160)
     plt.close()
 
-
+# Creates a bar chart with rotated x-axis labels, used for count/distribution data
 def _make_count_plot(labels, values, title, ylabel, out_path):
     plt.figure()
     plt.bar(labels, values)
@@ -404,7 +374,7 @@ def _make_count_plot(labels, values, title, ylabel, out_path):
     plt.savefig(out_path, dpi=160)
     plt.close()
 
-
+# Creates a scatter plot with an optional linear trend line
 def _make_scatter_plot(x, y, title, xlabel, ylabel, out_path, trend_line=False):
     plt.figure()
     plt.scatter(x, y, alpha=0.6)
@@ -420,9 +390,8 @@ def _make_scatter_plot(x, y, title, xlabel, ylabel, out_path, trend_line=False):
     plt.savefig(out_path, dpi=160)
     plt.close()
 
-
+# Creates a scatter plot comparing baseline vs AI accuracy per participant, with a diagonal no-change reference line
 def _make_scatter_diagonal_plot(baseline, ai, title, out_path):
-    """Participant-level accuracy comparison with diagonal reference line."""
     plt.figure()
     plt.scatter(baseline, ai, alpha=0.6)
     lims = [min(min(baseline), min(ai)) - 0.05, max(max(baseline), max(ai)) + 0.05]
@@ -436,7 +405,7 @@ def _make_scatter_diagonal_plot(baseline, ai, title, out_path):
     plt.savefig(out_path, dpi=160)
     plt.close()
 
-
+# Main function: loads all data, runs analyses, generates plots, and returns a summary dict
 def generate_results(static_root: str) -> Dict[str, Any]:
     participants = _read_table_as_df("participants")
     decisions = _read_table_as_df("decisions")

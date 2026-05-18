@@ -1,6 +1,5 @@
-# app/main.py
-# Runs the Flask app for the within-subjects study.
-# Each participant completes 12 baseline cases, then 12 AI cases.
+# app/main.py: Flask app for the within-subjects loan decision study.
+# Participants complete 12 baseline cases (no AI), then 12 AI-assisted cases.
 
 from __future__ import annotations
 
@@ -41,20 +40,19 @@ from app.db import (
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 app.secret_key = SECRET_KEY
 
-
+# Short descriptions shown to participants for each loan field
 FIELD_DESCRIPTIONS: Dict[str, str] = {
-    "age": "The applicant’s age in years.",
+    "age": "The applicant's age in years.",
     "annual_income": "Yearly income (before tax). Higher income may indicate better repayment capacity.",
     "loan_amount": "The amount of money the applicant wants to borrow.",
     "credit_score": "A summary score of credit history. Higher scores generally indicate lower financial risk.",
-    "employment_status": "The applicant’s employment situation.",
+    "employment_status": "The applicant's employment situation.",
     "existing_loans_count": "Number of existing loans the applicant already has.",
     "num_dependents": "Number of financially dependent persons.",
 }
 
-
+# Loads the study case file if it exists, otherwise falls back to the raw dataset
 def _load_cases() -> pd.DataFrame:
-    # Loads dataset and ensures required columns exist
     if os.path.exists(CASES_FOR_STUDY_PATH):
         df = pd.read_csv(CASES_FOR_STUDY_PATH)
     else:
@@ -69,12 +67,11 @@ def _load_cases() -> pd.DataFrame:
 
     return df
 
-
+# Cases are loaded once at startup and shared across all requests
 CASES_DF = _load_cases()
 
-
+# Randomly samples cases for a participant and splits them into baseline and AI blocks
 def _pick_cases_for_participant() -> Dict[str, List[Dict[str, Any]]]:
-    # Samples total cases and splits into baseline and AI blocks
     seed = session.get("seed")
     if seed is None:
         seed = int(time.time())
@@ -87,15 +84,13 @@ def _pick_cases_for_participant() -> Dict[str, List[Dict[str, Any]]]:
         df_sample = CASES_DF.sample(n=n_needed, random_state=seed).reset_index(drop=True)
 
     cases = df_sample.to_dict(orient="records")
-
     return {
         "baseline": cases[:CASES_PER_PARTICIPANT],
         "ai": cases[CASES_PER_PARTICIPANT:CASES_PER_PARTICIPANT * 2],
     }
 
-
+# Strips the target label and any hidden columns before sending a case to the UI
 def _ui_case_view(case_row: Dict[str, Any]) -> Dict[str, Any]:
-    # Removes target and hidden fields before sending to UI
     view = dict(case_row)
     view.pop(TARGET_COL, None)
     view.pop("case_id", None)
@@ -103,17 +98,15 @@ def _ui_case_view(case_row: Dict[str, Any]) -> Dict[str, Any]:
         view.pop(col, None)
     return view
 
-
+# Returns only the features needed by the AI model (removes target and case_id)
 def _features_for_model(case_row: Dict[str, Any]) -> Dict[str, Any]:
-    # Returns only model features
     feats = dict(case_row)
     feats.pop(TARGET_COL, None)
     feats.pop("case_id", None)
     return feats
 
-
+# Redirects to the admin login page if the current session is not authenticated as admin
 def _require_admin():
-    # Redirects to login if user is not admin
     if not session.get("is_admin"):
         return redirect(url_for("admin_login"))
     return None
@@ -126,7 +119,7 @@ def index():
 
 @app.route("/start", methods=["POST"])
 def start():
-    # Starts new participant session
+    # Reads demographic info from the form, assigns a random ID if none is provided, and initializes the session
     participant_id = request.form.get("participant_id", "").strip()
     if not participant_id:
         participant_id = f"p_{uuid.uuid4().hex[:8]}"
@@ -158,7 +151,7 @@ def start():
 
 @app.route("/guidelines", methods=["GET", "POST"])
 def guidelines():
-    # Shows guidelines page to ensure equal participant standing before tasks begin
+    # Shows the instruction page; on POST, marks guidelines as accepted and moves to the task
     participant_id = session.get("participant_id")
     if not participant_id:
         return redirect(url_for("index"))
@@ -171,7 +164,6 @@ def guidelines():
             session["guidelines_shown_logged"] = True
         return render_template("guidelines.html", approval_threshold=APPROVAL_THRESHOLD)
 
-    # POST: participant confirms they have read the guidelines
     session["guidelines_ok"] = True
     log_event(participant_id, block, case_id=None, event="guidelines_accepted", payload={})
     return redirect(url_for("task"))
@@ -179,23 +171,20 @@ def guidelines():
 
 @app.route("/transition", methods=["GET"])
 def transition():
-    # Shows transition page before AI block
+    # Shows the transition page between the baseline block and the AI block
     participant_id = session.get("participant_id")
     if not participant_id:
         return redirect(url_for("index"))
-
     if not session.get("guidelines_ok"):
         return redirect(url_for("guidelines"))
-
     if session.get("block") != "ai":
         return redirect(url_for("task"))
-
     return render_template("transition.html")
 
 
 @app.route("/task", methods=["GET"])
 def task():
-    # Displays one case
+    # Displays the current case; attaches AI advice if in the AI block; redirects when a block is complete
     participant_id = session.get("participant_id")
     block = session.get("block", "baseline")
     cases_by_block = session.get("cases_by_block", {})
@@ -204,7 +193,6 @@ def task():
 
     if not participant_id or not cases:
         return redirect(url_for("index"))
-
     if not session.get("guidelines_ok"):
         return redirect(url_for("guidelines"))
 
@@ -245,7 +233,7 @@ def task():
 
 @app.route("/submit_decision", methods=["POST"])
 def submit_decision():
-    # Stores participant decision
+    # Validates the decision, logs it to the database, advances the case index, and returns the next URL
     participant_id = session.get("participant_id")
     block = session.get("block", "baseline")
     cases_by_block = session.get("cases_by_block", {})
@@ -254,10 +242,8 @@ def submit_decision():
 
     if not participant_id or not cases:
         return jsonify({"ok": False, "error": "No active session"}), 400
-
     if not session.get("guidelines_ok"):
         return jsonify({"ok": False, "error": "Guidelines not accepted"}), 400
-
     if idx >= len(cases):
         return jsonify({"ok": False, "error": "No more cases"}), 400
 
@@ -322,11 +308,10 @@ def submit_decision():
 
 @app.route("/survey", methods=["GET", "POST"])
 def survey():
-    # Displays and stores final survey
+    # Shows the post-study survey on GET; saves answers and marks the participant as completed on POST
     participant_id = session.get("participant_id")
     if not participant_id:
         return redirect(url_for("index"))
-
     if not session.get("guidelines_ok"):
         return redirect(url_for("guidelines"))
 
@@ -347,14 +332,13 @@ def done():
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
+    # Shows the login form on GET; checks the password and sets the admin session flag on POST
     if request.method == "GET":
         return render_template("admin_login.html")
-
     pw = request.form.get("password", "")
     if pw == ADMIN_PASSWORD:
         session["is_admin"] = True
         return redirect(url_for("admin_dashboard"))
-
     return render_template("admin_login.html", error="Wrong password")
 
 
@@ -366,10 +350,10 @@ def admin_logout():
 
 @app.route("/admin/dashboard", methods=["GET"])
 def admin_dashboard():
+    # Shows row counts and per-participant stats for the admin overview page
     r = _require_admin()
     if r:
         return r
-
     counts = {
         "participants": db_count_rows("participants"),
         "decisions": db_count_rows("decisions"),
@@ -382,23 +366,22 @@ def admin_dashboard():
 
 @app.route("/admin/results", methods=["GET"])
 def admin_results():
+    # Runs the full analysis and renders the results page
     r = _require_admin()
     if r:
         return r
-
     results = generate_results(app.static_folder)
     return render_template("results.html", results=results)
 
 
 @app.route("/admin/download_db", methods=["GET"])
 def admin_download_db():
+    # Sends the SQLite database file as a download
     r = _require_admin()
     if r:
         return r
-
     if not os.path.exists(SQLITE_DB_PATH):
         init_db()
-
     return send_file(
         SQLITE_DB_PATH,
         as_attachment=True,
@@ -409,15 +392,13 @@ def admin_download_db():
 
 @app.route("/admin/download_participant_summary", methods=["GET"])
 def admin_download_participant_summary():
+    # Regenerates the participant summary CSV and sends it as a download
     r = _require_admin()
     if r:
         return r
-
     generate_results(app.static_folder)
-
     if not os.path.exists(PARTICIPANT_SUMMARY_PATH):
         return redirect(url_for("admin_results"))
-
     return send_file(
         PARTICIPANT_SUMMARY_PATH,
         as_attachment=True,
@@ -428,39 +409,37 @@ def admin_download_participant_summary():
 
 @app.route("/admin/upload_db", methods=["POST"])
 def admin_upload_db():
+    # Replaces the current database file with an uploaded one and re-initializes the schema
     r = _require_admin()
     if r:
         return r
-
     uploaded_file = request.files.get("db_file")
     if uploaded_file and uploaded_file.filename:
         os.makedirs(os.path.dirname(SQLITE_DB_PATH), exist_ok=True)
         uploaded_file.save(SQLITE_DB_PATH)
         init_db()
-
     return redirect(url_for("admin_dashboard"))
 
 
 @app.route("/admin/clear_all", methods=["POST"])
 def admin_clear_all_route():
+    # Deletes all rows from all study tables
     r = _require_admin()
     if r:
         return r
-
     db_clear_all()
     return redirect(url_for("admin_dashboard"))
 
 
 @app.route("/admin/delete_participant", methods=["POST"])
 def admin_delete_participant_route():
+    # Deletes all data for a single participant from every table
     r = _require_admin()
     if r:
         return r
-
     pid = request.form.get("participant_id", "").strip()
     if pid:
         db_delete_participant(pid)
-
     return redirect(url_for("admin_dashboard"))
 
 

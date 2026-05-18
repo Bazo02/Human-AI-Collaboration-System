@@ -1,5 +1,4 @@
-# app/logger.py
-# Logs study data to SQLite.
+# app/logger.py: writes study events, decisions, surveys, and participant info to the SQLite database.
 
 from __future__ import annotations
 
@@ -9,16 +8,14 @@ from typing import Any, Dict, Optional
 
 from app.db import get_conn, init_db
 
-
+# Returns the current UTC time, used as a timestamp for all log entries
 def _now_utc_iso() -> str:
-    # Returns current UTC time in ISO format
     return datetime.now(timezone.utc).isoformat()
 
-
-# Initializes database tables when the module is imported
+# Initializes the database tables 
 init_db()
 
-
+# Inserts or updates a participant's demographic info in the participants table
 def log_participant(
     participant_id: str,
     age_group: str,
@@ -52,7 +49,7 @@ def log_participant(
     conn.commit()
     conn.close()
 
-
+# Sets the completed flag to 1 for a participant once they finish the study
 def mark_participant_completed(participant_id: str):
     conn = get_conn()
     cur = conn.cursor()
@@ -73,7 +70,7 @@ def mark_participant_completed(participant_id: str):
     conn.commit()
     conn.close()
 
-
+# Inserts a single event row with the participant ID, condition, case ID, event name, and a JSON payload in the events table
 def log_event(
     participant_id: str,
     condition: str,
@@ -81,7 +78,6 @@ def log_event(
     event: str,
     payload: Dict[str, Any],
 ):
-    # Inserts one row into the events table
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -101,7 +97,7 @@ def log_event(
     conn.commit()
     conn.close()
 
-
+# Inserts a single decision row with the participant's choice, correctness, timing, and AI-related fields
 def log_decision(
     participant_id: str,
     condition: str,
@@ -117,7 +113,6 @@ def log_decision(
     ai_confidence: Optional[float] = None,
     ai_prob_approve: Optional[float] = None,
 ):
-    # Inserts one row into the decisions table
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -150,9 +145,8 @@ def log_decision(
     conn.commit()
     conn.close()
 
-
+# Inserts a single survey row with the participant's answers stored as JSON
 def log_survey(participant_id: str, condition: str, answers: Dict[str, Any]):
-    # Inserts one row into the surveys table
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(

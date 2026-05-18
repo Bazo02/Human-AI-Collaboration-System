@@ -1,5 +1,4 @@
-# app/db.py
-# Handles SQLite database setup and simple admin operations for the thesis prototype.
+# app/db.py: handles SQLite database setup and admin operations for the study.
 
 from __future__ import annotations
 
@@ -9,36 +8,33 @@ from typing import Optional, Any, Dict
 
 from app.config import SQLITE_DB_PATH
 
-
+# Creates the parent directory for the database file if it doesn't exist
 def _ensure_parent_dir(path: str) -> None:
-    # Creates the parent folder if it does not exist
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
 
-
+# Returns a SQLite connection, creating the database file if it doesn't exist
 def get_conn() -> sqlite3.Connection:
-    # Returns a SQLite connection and creates the DB file if missing
     _ensure_parent_dir(SQLITE_DB_PATH)
     conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
-
+# Checks whether a column exists in a given table
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     cur = conn.cursor()
     cur.execute(f"PRAGMA table_info({table})")
     rows = cur.fetchall()
     return any(str(row[1]) == column for row in rows)
 
-
+# Adds a column to a table if it doesn't already exist
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str) -> None:
     if not _column_exists(conn, table, column):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
-
+# Creates all study tables if they don't exist, and adds any missing columns
 def init_db() -> None:
-    # Creates tables if they do not already exist
     conn = get_conn()
     cur = conn.cursor()
 
@@ -54,7 +50,6 @@ def init_db() -> None:
     )
     """)
 
-    # Creates events table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +62,6 @@ def init_db() -> None:
     )
     """)
 
-    # Creates decisions table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS decisions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,7 +79,6 @@ def init_db() -> None:
     )
     """)
 
-    # Creates surveys table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS surveys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,12 +96,8 @@ def init_db() -> None:
     conn.commit()
     conn.close()
 
-
-# Admin DB functions
-
-
+# Returns the number of rows in a given table
 def db_count_rows(table: str) -> int:
-    # Returns number of rows in a table
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"SELECT COUNT(*) FROM {table}")
@@ -116,12 +105,10 @@ def db_count_rows(table: str) -> int:
     conn.close()
     return n
 
-
+# Returns a sorted list of all participant IDs across all tables, excluding ADMIN
 def db_list_participants() -> list[str]:
-    # Returns sorted unique participant IDs from all tables (excluding ADMIN)
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
         SELECT DISTINCT participant_id FROM participants
         UNION
@@ -133,16 +120,12 @@ def db_list_participants() -> list[str]:
     """)
     rows = [r[0] for r in cur.fetchall()]
     conn.close()
+    return sorted([p for p in rows if p and str(p).strip() and str(p) != "ADMIN"])
 
-    cleaned = sorted([p for p in rows if p and str(p).strip() and str(p) != "ADMIN"])
-    return cleaned
-
-
+# Returns participant stats (row counts per table) for the admin dashboard
 def db_get_participant_stats() -> list[dict]:
-    # Returns sorted participant IDs with row counts from all tables (excluding ADMIN)
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
         WITH participant_ids AS (
             SELECT participant_id FROM participants
@@ -185,10 +168,8 @@ def db_get_participant_stats() -> list[dict]:
           AND p.participant_id != 'ADMIN'
         ORDER BY p.participant_id
     """)
-
     rows = cur.fetchall()
     conn.close()
-
     return [
         {
             "participant_id": row[0],
@@ -204,40 +185,33 @@ def db_get_participant_stats() -> list[dict]:
         for row in rows
     ]
 
-
+# Deletes all rows for a single participant from every table and returns the deleted counts
 def db_delete_participant(participant_id: str) -> dict:
-    # Deletes one participant from all tables and returns deleted row counts
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("SELECT COUNT(*) FROM decisions WHERE participant_id = ?", (participant_id,))
     d_before = int(cur.fetchone()[0])
     cur.execute("DELETE FROM decisions WHERE participant_id = ?", (participant_id,))
-    d_deleted = d_before
 
     cur.execute("SELECT COUNT(*) FROM surveys WHERE participant_id = ?", (participant_id,))
     s_before = int(cur.fetchone()[0])
     cur.execute("DELETE FROM surveys WHERE participant_id = ?", (participant_id,))
-    s_deleted = s_before
 
     cur.execute("SELECT COUNT(*) FROM events WHERE participant_id = ?", (participant_id,))
     e_before = int(cur.fetchone()[0])
     cur.execute("DELETE FROM events WHERE participant_id = ?", (participant_id,))
-    e_deleted = e_before
 
     cur.execute("SELECT COUNT(*) FROM participants WHERE participant_id = ?", (participant_id,))
     p_before = int(cur.fetchone()[0])
     cur.execute("DELETE FROM participants WHERE participant_id = ?", (participant_id,))
-    p_deleted = p_before
 
     conn.commit()
     conn.close()
+    return {"decisions": d_before, "surveys": s_before, "events": e_before, "participants": p_before}
 
-    return {"decisions": d_deleted, "surveys": s_deleted, "events": e_deleted, "participants": p_deleted}
-
-
+# Deletes all rows in a single table and returns how many were removed
 def db_clear_table(table: str) -> int:
-    # Deletes all rows in one table and returns number of deleted rows
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(f"SELECT COUNT(*) FROM {table}")
@@ -247,9 +221,8 @@ def db_clear_table(table: str) -> int:
     conn.close()
     return before
 
-
+# Clears all study tables and returns the number of deleted rows per table
 def db_clear_all() -> dict:
-    # Clears all study tables and returns deleted row counts
     return {
         "participants": db_clear_table("participants"),
         "events": db_clear_table("events"),

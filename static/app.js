@@ -1,23 +1,24 @@
-// static/app.js
-
+// static/app.js: handles user interaction on the task page — timing, AI tracking, and decision submission.
 
 let startTime = null;
 let aiSeen = false;
 let explanationOpened = false;
 let aiFollowed = null;
 
+// Sets up the timer and attaches event listeners when the page has finished loading
 document.addEventListener("DOMContentLoaded", function () {
   startTime = performance.now();
 
+  // If the AI panel is present on the page, the participant has seen the AI recommendation
   const aiPanel = document.getElementById("ai-panel");
   if (aiPanel) aiSeen = true;
 
+  // Tracks whether the participant opened the explanation panel
   const explanationBtn = document.getElementById("toggle-explanation");
   if (explanationBtn) {
     explanationBtn.addEventListener("click", function () {
       const explanation = document.getElementById("ai-explanation");
       if (!explanation) return;
-
       const hidden = explanation.style.display === "none";
       explanation.style.display = hidden ? "block" : "none";
       if (hidden) explanationOpened = true;
@@ -28,12 +29,14 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("reject-btn")?.addEventListener("click", () => submitDecision("Reject"));
 });
 
+// Sends the participant's decision to the server along with timing and AI interaction data
 function submitDecision(decision) {
   const caseId = document.getElementById("case-id")?.value;
   if (!caseId) return;
 
   const timeMs = Math.round(performance.now() - startTime);
 
+  // Checks if the participant's decision matches the AI recommendation
   const aiRecEl = document.getElementById("ai-recommendation");
   if (aiRecEl) {
     const rec = aiRecEl.dataset.recommendation;
@@ -71,6 +74,7 @@ function submitDecision(decision) {
     });
 }
 
+// Disables the approve and reject buttons to prevent double submission
 function disableButtons() {
   const a = document.getElementById("approve-btn");
   const r = document.getElementById("reject-btn");
@@ -78,6 +82,7 @@ function disableButtons() {
   if (r) r.disabled = true;
 }
 
+// Re-enables the approve and reject buttons, used when a submission fails
 function enableButtons() {
   const a = document.getElementById("approve-btn");
   const r = document.getElementById("reject-btn");

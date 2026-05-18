@@ -1,5 +1,4 @@
-# app/model_train.py
-# Trains the logistic regression model used by the AI advisor.
+# app/model_train.py: trains the logistic regression model used by the AI advisor and saves it to disk.
 
 from __future__ import annotations
 
@@ -23,7 +22,7 @@ from app.config import (
     TARGET_COL,
 )
 
-# Lists columns that should not be used as model features
+# Columns that should never be used as model features
 EXCLUDE_COLS = [
     "applicant_id",
     "case_id",
@@ -31,36 +30,27 @@ EXCLUDE_COLS = [
     "marital_status",
 ]
 
-
+# Loads the full dataset, falling back to the study subset if the main file is missing
 def _load_training_data() -> pd.DataFrame:
-    # Loads training data from the main dataset, or falls back to the study dataset
     if os.path.exists(DATA_PATH):
         return pd.read_csv(DATA_PATH)
     if os.path.exists(CASES_FOR_STUDY_PATH):
         return pd.read_csv(CASES_FOR_STUDY_PATH)
     raise FileNotFoundError("Could not find a dataset to train on.")
 
-
+# Splits the feature columns into numeric and categorical lists based on dtype
 def _split_columns(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
-    # Splits feature columns into numeric and categorical lists
     feature_cols = [c for c in df.columns if c != TARGET_COL and c not in EXCLUDE_COLS]
-
     numeric_cols = [c for c in feature_cols if df[c].dtype.kind in "biufc"]
     categorical_cols = [c for c in feature_cols if c not in numeric_cols]
-
     return numeric_cols, categorical_cols
 
-
+# Loads data, builds and trains the pipeline, evaluates it, and saves the model to disk
 def main() -> None:
     df = _load_training_data().copy()
-
-    # Removes duplicate rows
     df = df.drop_duplicates()
-
-    # Converts target to int 0/1
     df[TARGET_COL] = df[TARGET_COL].astype(int)
 
-    # Fills missing values 
     for col in df.columns:
         if col == TARGET_COL:
             continue
@@ -69,18 +59,14 @@ def main() -> None:
         else:
             df[col] = df[col].fillna("Unknown")
 
-    # Builds feature matrix X and target vector y
     X = df.drop(columns=[TARGET_COL])
     y = df[TARGET_COL]
 
-    # Removes excluded columns if present
     for col in EXCLUDE_COLS:
         if col in X.columns:
             X = X.drop(columns=[col])
 
     numeric_cols, categorical_cols = _split_columns(df)
-
-    # Keeps only columns that still exist in X
     numeric_cols = [c for c in numeric_cols if c in X.columns]
     categorical_cols = [c for c in categorical_cols if c in X.columns]
 
@@ -88,7 +74,6 @@ def main() -> None:
     print("  Numeric:", numeric_cols)
     print("  Categorical:", categorical_cols)
 
-    # Builds preprocessing steps for numeric scaling and categorical encoding
     preprocess = ColumnTransformer(
         transformers=[
             ("num", StandardScaler(), numeric_cols),
@@ -96,7 +81,6 @@ def main() -> None:
         ]
     )
 
-    # Defines the logistic regression classifier
     clf = LogisticRegression(
         max_iter=1000,
         solver="lbfgs",
@@ -109,7 +93,6 @@ def main() -> None:
         ]
     )
 
-    # Splits data for a quick performance check
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
         test_size=0.25,
@@ -119,7 +102,6 @@ def main() -> None:
 
     model.fit(X_train, y_train)
 
-    # Evaluates model on the test split
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
 
@@ -130,7 +112,6 @@ def main() -> None:
     print("\nClassification report:")
     print(classification_report(y_test, y_pred, digits=3))
 
-    # Saves trained model to disk
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     joblib.dump(model, MODEL_PATH)
 
